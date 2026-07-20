@@ -10,17 +10,42 @@
   <div class="app-shell">
     <aside class="sidebar">
       <h1>GSO Forecast</h1>
-      <nav>
+      <nav class="sidebar-nav">
         <button class="nav-button active" data-view="dashboard">Dashboard</button>
-        <button class="nav-button" data-view="study">Country Information</button>
-        <button class="nav-button" data-view="history">Approval History</button>
-        <button class="nav-button" data-view="timeline">Site Activation Timeline</button>
-        <button class="nav-button" data-view="sites">Site Information</button>
-        <button class="nav-button" data-view="forecast">Enrollment Curve</button>
-        <button class="nav-button" data-view="enrollmentByMonth">Enrollment by Month</button>
-        <button class="nav-button" data-view="countryContribution">Country Contribution</button>
-        <button class="nav-button" data-view="siteActivationCurve">Site Activation Curve</button>
-        <button class="nav-button" data-view="scenario">Scenario</button>
+        <button class="nav-button nav-sub-button" data-view="currentState">Current State</button>
+
+        <div class="nav-group expanded">
+          <button class="nav-group-toggle" data-nav-group-toggle>Countries</button>
+          <div class="nav-group-items">
+            <button class="nav-button" data-view="study">Country Information</button>
+            <button class="nav-button" data-view="history">Approval History</button>
+          </div>
+        </div>
+
+        <div class="nav-group expanded">
+          <button class="nav-group-toggle" data-nav-group-toggle>Sites</button>
+          <div class="nav-group-items">
+            <button class="nav-button" data-view="timeline">Site Activation Timeline</button>
+            <button class="nav-button" data-view="sites">Site Information</button>
+          </div>
+        </div>
+
+        <div class="nav-group expanded">
+          <button class="nav-group-toggle" data-nav-group-toggle>Forecast Views</button>
+          <div class="nav-group-items">
+            <button class="nav-button" data-view="forecast">Enrollment Curve</button>
+            <button class="nav-button" data-view="enrollmentByMonth">Enrollment by Month</button>
+            <button class="nav-button" data-view="countryContribution">Country Contribution</button>
+            <button class="nav-button" data-view="siteActivationCurve">Site Activation Curve</button>
+          </div>
+        </div>
+
+        <div class="nav-group expanded">
+          <button class="nav-group-toggle" data-nav-group-toggle>Scenario Planning</button>
+          <div class="nav-group-items">
+            <button class="nav-button" data-view="scenario">Scenario</button>
+          </div>
+        </div>
       </nav>
     </aside>
 
@@ -31,7 +56,11 @@
             <p class="eyebrow">MVP Prototype</p>
             <h2 id="studyTitle">Enrollment Forecast</h2>
           </div>
-          <button id="runForecastTop" class="primary">Run Forecast</button>
+          <div class="header-actions">
+            <button id="saveStateBtn" class="secondary">Save</button>
+            <button id="loadStateBtn" class="secondary">Load</button>
+            <button id="runForecastTop" class="primary">Run Forecast</button>
+          </div>
         </div>
 <label>
   Study Name
@@ -60,6 +89,10 @@
               <input id="globalEnrollmentRateKPI" type="number" value="" />
             </label>
             <label>
+              Average Price Per Participant
+              <input id="averagePricePerParticipantKPI" type="number" value="" />
+            </label>
+            <label>
               Target FPS Date
               <input id="targetFpsDateKPI" type="text" value="" placeholder="DD-MMM-YYYY" />
             </label>
@@ -79,7 +112,52 @@
               Minimum Screenings Needed
               <input id="minimumScreeningsNeeded" readonly />
             </label>
+            <label>
+              Total Enrollment Cost
+              <input id="totalEnrollmentCost" readonly />
+            </label>
           </div>
+        </div>
+      </section>
+
+      <section id="currentState" class="view">
+        <div class="page-header">
+          <div>
+            <p class="eyebrow">Dashboard</p>
+            <h2>Current State</h2>
+          </div>
+          <label>
+            As of Date
+            <input id="currentStateAsOfDate" type="text" placeholder="DD-MMM-YYYY" />
+          </label>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span>Forecasted vs Target LPI</span>
+            <strong id="currentStateLpiComparison">--</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Enrollment Progress</span>
+            <strong id="currentStateEnrollmentProgress">0/0 (0%)</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Active Sites</span>
+            <strong id="currentStateActiveSites">0</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Current Enrollment Rate</span>
+            <strong id="currentStateEnrollmentRate">0.00</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Enrollment Pace</span>
+            <strong id="currentStatePaceStatus">--</strong>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Current vs Forecast Baseline</h3>
+          <div id="currentStateChart" class="current-state-chart"></div>
         </div>
       </section>
 
@@ -163,6 +241,11 @@
             <p class="eyebrow">Site Setup</p>
             <h2>Site Information</h2>
           </div>
+          <div class="header-actions">
+            <button id="downloadSiteCsvTemplateBtn" class="secondary">Download Site CSV Template</button>
+            <button id="exportSiteCsvBtn" class="secondary">Export Sites CSV</button>
+            <button id="importSiteCsvBtn" class="secondary">Import Sites CSV</button>
+          </div>
         </div>
         <div class="table-panel">
           <table>
@@ -170,7 +253,7 @@
               <tr>
                 <th>Include</th>
 <th>Country</th>
-<th>Site</th>
+<th>PI / Site Name</th>
 <th>Activation Date</th>
 <th>ER Mode</th>
 <th>Enrollment Rate</th>
@@ -322,7 +405,10 @@
       <p class="eyebrow">Scenario Modeling</p>
       <h2>Scenario Engine</h2>
     </div>
-    <button id="addScenarioBtn" class="primary">+ Add Scenario</button>
+    <div class="header-actions">
+      <button id="generateBestScenarioBtn" class="secondary">Generate Best Add-On</button>
+      <button id="addScenarioBtn" class="primary">+ Add Scenario</button>
+    </div>
   </div>
 
   <div id="scenarioList"></div>
@@ -333,6 +419,8 @@
   </div>
   
 <datalist id="countryOptions"></datalist>
+  <input id="loadStateFile" type="file" accept=".json,application/json" hidden />
+  <input id="siteCsvFileInput" type="file" accept=".csv,text/csv" hidden />
   <script src="app.js"></script>
 </body>
 </html>

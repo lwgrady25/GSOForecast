@@ -205,6 +205,19 @@ let sites = [];
 
 let scenarios = [];
 let nextScenarioId = 1;
+const APP_STATE_VERSION = 1;
+const APP_STATE_FILE_PREFIX = 'gso-forecast';
+const SITE_CSV_TEMPLATE_HEADERS = [
+  'country',
+  'site_number',
+  'pi_site_name',
+  'activation_date',
+  'er_mode',
+  'enrollment_rate',
+  'max_participants',
+  'current_enrollment',
+  'include'
+];
 
 
 function formatDate(value) {
@@ -371,6 +384,574 @@ function getTextValue(id, fallbackValue) {
   return element.value || fallbackValue;
 }
 
+function toStringValue(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return String(value);
+}
+
+function toFiniteNumber(value, fallbackValue = 0) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallbackValue;
+  }
+
+  return numericValue;
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getStudyInputsSnapshot() {
+  return {
+    studyName: getTextValue('studyName', ''),
+    targetEnrollmentKPI: getTextValue('targetEnrollmentKPI', ''),
+    screenFailRateKPI: getTextValue('screenFailRateKPI', ''),
+    screeningWindowKPI: getTextValue('screeningWindowKPI', ''),
+    globalEnrollmentRateKPI: getTextValue('globalEnrollmentRateKPI', ''),
+    averagePricePerParticipantKPI: getTextValue('averagePricePerParticipantKPI', ''),
+    targetFpsDateKPI: getTextValue('targetFpsDateKPI', ''),
+    targetLpiKPI: getTextValue('targetLpiKPI', ''),
+    currentStateAsOfDate: getTextValue('currentStateAsOfDate', '')
+  };
+}
+
+function applyStudyInputsSnapshot(studyInputs) {
+  const safeInputs = isPlainObject(studyInputs) ? studyInputs : {};
+
+  setValueIfExists('studyName', toStringValue(safeInputs.studyName));
+  setValueIfExists('targetEnrollmentKPI', toStringValue(safeInputs.targetEnrollmentKPI));
+  setValueIfExists('screenFailRateKPI', toStringValue(safeInputs.screenFailRateKPI));
+  setValueIfExists('screeningWindowKPI', toStringValue(safeInputs.screeningWindowKPI));
+  setValueIfExists('globalEnrollmentRateKPI', toStringValue(safeInputs.globalEnrollmentRateKPI));
+  setValueIfExists('averagePricePerParticipantKPI', toStringValue(safeInputs.averagePricePerParticipantKPI));
+  setValueIfExists('targetFpsDateKPI', toStringValue(safeInputs.targetFpsDateKPI));
+  setValueIfExists('targetLpiKPI', toStringValue(safeInputs.targetLpiKPI));
+  setValueIfExists('currentStateAsOfDate', toStringValue(safeInputs.currentStateAsOfDate));
+}
+
+function getAppStateSnapshot() {
+  return {
+    version: APP_STATE_VERSION,
+    savedAt: new Date().toISOString(),
+    studyInputs: getStudyInputsSnapshot(),
+    historicalApprovalDays: historicalApprovalDays.map(item => ({
+      country: toStringValue(item.country),
+      approvalDays: toFiniteNumber(item.approvalDays, 0)
+    })),
+    countryAssumptions: countryAssumptions.map(item => ({
+      country: toStringValue(item.country),
+      initialCountry: Boolean(item.initialCountry),
+      countryEr: toFiniteNumber(item.countryEr, 0),
+      participantsPerCountry: toFiniteNumber(item.participantsPerCountry, 0),
+      siteCount: toFiniteNumber(item.siteCount, 0),
+      averageTimeToActivateSite: toFiniteNumber(item.averageTimeToActivateSite, 0),
+      submissionDate: toStringValue(item.submissionDate),
+      approvalDays: item.approvalDays === null ? null : toFiniteNumber(item.approvalDays, 0)
+    })),
+    sites: sites.map(item => ({
+      siteKey: toStringValue(item.siteKey),
+      include: Boolean(item.include),
+      country: toStringValue(item.country),
+      site: toStringValue(item.site),
+      activation: toStringValue(item.activation),
+      siteErMode: toStringValue(item.siteErMode || 'Global'),
+      er: toFiniteNumber(item.er, 0),
+      max: toFiniteNumber(item.max, 0),
+      currentEnrollment: toFiniteNumber(item.currentEnrollment, 0)
+    })),
+    scenarios: scenarios.map(item => ({
+      id: toFiniteNumber(item.id, 0),
+      name: toStringValue(item.name),
+      enabled: Boolean(item.enabled),
+      screenFailRate: toFiniteNumber(item.screenFailRate, 0),
+      enrollmentRate: toFiniteNumber(item.enrollmentRate, 0),
+      activationTimingAdjustment: toFiniteNumber(item.activationTimingAdjustment, 0),
+      selectedCountries: Array.isArray(item.selectedCountries)
+        ? item.selectedCountries.map(value => toStringValue(value))
+        : []
+    })),
+    nextScenarioId: toFiniteNumber(nextScenarioId, 1)
+  };
+}
+
+function getStateFileName(studyName) {
+  const cleanedName = toStringValue(studyName)
+    .trim()
+    .replace(/[^a-z0-9-_]+/gi, '-')
+    .replace(/^-+|-+$/g, '');
+
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  const filePrefix = cleanedName || APP_STATE_FILE_PREFIX;
+
+  return `${filePrefix}-state-${dateStamp}.json`;
+}
+
+function saveStateToFile() {
+  const snapshot = getAppStateSnapshot();
+  const fileContents = JSON.stringify(snapshot, null, 2);
+  const blob = new Blob([fileContents], { type: 'application/json' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  const downloadLink = document.createElement('a');
+  downloadLink.href = blobUrl;
+  downloadLink.download = getStateFileName(snapshot.studyInputs.studyName);
+
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  downloadLink.remove();
+
+  URL.revokeObjectURL(blobUrl);
+}
+
+function readFileAsText(file, onSuccess, onError) {
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    onSuccess(String(reader.result || ''));
+  };
+
+  reader.onerror = () => {
+    onError('Unable to read the selected file. Please try again.');
+  };
+
+  reader.readAsText(file);
+}
+
+function parseLoadedState(jsonText) {
+  try {
+    return JSON.parse(jsonText);
+  } catch (error) {
+    window.alert('The selected file is not valid JSON.');
+    return null;
+  }
+}
+
+function normalizeHistoricalApprovals(items) {
+  return items
+    .filter(item => isPlainObject(item))
+    .map(item => ({
+      country: toStringValue(item.country),
+      approvalDays: toFiniteNumber(item.approvalDays, 0)
+    }));
+}
+
+function normalizeCountryAssumptions(items) {
+  return items
+    .filter(item => isPlainObject(item))
+    .map(item => ({
+      country: toStringValue(item.country),
+      initialCountry: Boolean(item.initialCountry),
+      countryEr: toFiniteNumber(item.countryEr, 0),
+      participantsPerCountry: toFiniteNumber(item.participantsPerCountry, 0),
+      siteCount: toFiniteNumber(item.siteCount, 0),
+      averageTimeToActivateSite: toFiniteNumber(item.averageTimeToActivateSite, 0),
+      submissionDate: toStringValue(item.submissionDate),
+      approvalDays: item.approvalDays === null ? null : toFiniteNumber(item.approvalDays, 0)
+    }));
+}
+
+function normalizeSites(items) {
+  return items
+    .filter(item => isPlainObject(item))
+    .map(item => ({
+      siteKey: toStringValue(item.siteKey),
+      include: Boolean(item.include),
+      country: toStringValue(item.country),
+      site: toStringValue(item.site),
+      activation: toStringValue(item.activation),
+      siteErMode: toStringValue(item.siteErMode || 'Global'),
+      er: toFiniteNumber(item.er, 0),
+      max: toFiniteNumber(item.max, 0),
+      currentEnrollment: toFiniteNumber(item.currentEnrollment, 0)
+    }));
+}
+
+function normalizeScenarios(items) {
+  return items
+    .filter(item => isPlainObject(item))
+    .map(item => ({
+      id: toFiniteNumber(item.id, 0),
+      name: toStringValue(item.name),
+      enabled: Boolean(item.enabled),
+      screenFailRate: toFiniteNumber(item.screenFailRate, 0),
+      enrollmentRate: toFiniteNumber(item.enrollmentRate, 0),
+      activationTimingAdjustment: toFiniteNumber(item.activationTimingAdjustment, 0),
+      selectedCountries: Array.isArray(item.selectedCountries)
+        ? item.selectedCountries.map(value => toStringValue(value))
+        : []
+    }))
+    .filter(item => item.id > 0);
+}
+
+function loadStateFromText(jsonText) {
+  const loadedState = parseLoadedState(jsonText);
+
+  if (!isPlainObject(loadedState)) {
+    if (loadedState !== null) {
+      window.alert('The selected file is not a valid forecast save file.');
+    }
+    return;
+  }
+
+  if (!Array.isArray(loadedState.historicalApprovalDays)) {
+    window.alert('The selected file is missing historical approval data.');
+    return;
+  }
+
+  if (!Array.isArray(loadedState.countryAssumptions)) {
+    window.alert('The selected file is missing country assumption data.');
+    return;
+  }
+
+  if (!Array.isArray(loadedState.sites)) {
+    window.alert('The selected file is missing site data.');
+    return;
+  }
+
+  if (!Array.isArray(loadedState.scenarios)) {
+    window.alert('The selected file is missing scenario data.');
+    return;
+  }
+
+  applyStudyInputsSnapshot(loadedState.studyInputs);
+
+  const loadedHistoricalApprovals = normalizeHistoricalApprovals(loadedState.historicalApprovalDays);
+  historicalApprovalDays.splice(0, historicalApprovalDays.length, ...loadedHistoricalApprovals);
+
+  countryAssumptions = normalizeCountryAssumptions(loadedState.countryAssumptions);
+  sites = normalizeSites(loadedState.sites);
+  scenarios = normalizeScenarios(loadedState.scenarios);
+
+  const highestScenarioId = scenarios.reduce((highest, scenario) => Math.max(highest, scenario.id), 0);
+  const loadedNextScenarioId = toFiniteNumber(loadedState.nextScenarioId, 0);
+  nextScenarioId = loadedNextScenarioId > highestScenarioId
+    ? loadedNextScenarioId
+    : highestScenarioId + 1;
+
+  updateStudyTitle();
+  renderHistoricalApprovalTable();
+  renderCountryAssumptionsTable();
+  renderSiteTable();
+  renderSiteActivationTimeline();
+  renderScenarioList();
+  runForecast();
+}
+
+function normalizeCsvHeader(value) {
+  return toStringValue(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseCsvRows(csvText) {
+  const lines = toStringValue(csvText)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .filter(line => line.trim().length > 0);
+
+  if (lines.length < 2) {
+    return { headerMap: null, rows: [] };
+  }
+
+  const rawHeaders = parseCsvLine(lines[0]);
+  const headerMap = {};
+
+  rawHeaders.forEach((header, index) => {
+    const key = normalizeCsvHeader(header);
+    if (key) {
+      headerMap[key] = index;
+    }
+  });
+
+  const rows = lines.slice(1).map((line, index) => ({
+    rowNumber: index + 2,
+    values: parseCsvLine(line)
+  }));
+
+  return { headerMap, rows };
+}
+
+function readCsvField(rowValues, headerMap, aliases) {
+  for (let i = 0; i < aliases.length; i += 1) {
+    const index = headerMap[aliases[i]];
+    if (index !== undefined) {
+      return toStringValue(rowValues[index]).trim();
+    }
+  }
+  return '';
+}
+
+function parseImportBoolean(value) {
+  const normalized = toStringValue(value).trim().toLowerCase();
+  if (!normalized) return null;
+  if (['true', 'yes', 'y', '1'].includes(normalized)) return true;
+  if (['false', 'no', 'n', '0'].includes(normalized)) return false;
+  return null;
+}
+
+function parseImportNumber(value, fieldLabel, rowNumber, errors) {
+  const text = toStringValue(value).trim();
+  if (!text) {
+    return null;
+  }
+
+  const numericValue = Number(text);
+  if (!Number.isFinite(numericValue)) {
+    errors.push(`Row ${rowNumber}: Invalid ${fieldLabel} value "${value}".`);
+    return null;
+  }
+
+  return numericValue;
+}
+
+function downloadSiteCsvTemplate() {
+  const sampleRows = [
+    SITE_CSV_TEMPLATE_HEADERS.join(','),
+    'United States,1,Dr. Smith,15-Jan-2026,Custom,0.35,25,18,true'
+  ];
+  const csv = sampleRows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'site-import-template.csv';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function toCsvCell(value) {
+  const text = toStringValue(value);
+  if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function getSiteNumberFromSite(site) {
+  const explicitSiteKey = toStringValue(site.siteKey).trim();
+  const siteKeyMatch = explicitSiteKey.match(/\|(\d+)$/);
+  if (siteKeyMatch) {
+    return siteKeyMatch[1];
+  }
+
+  const legacyNameMatch = toStringValue(site.site).match(/(\d+)$/);
+  if (legacyNameMatch) {
+    return legacyNameMatch[1];
+  }
+
+  return '';
+}
+
+function exportSitesToCsv() {
+  const rows = [SITE_CSV_TEMPLATE_HEADERS.join(',')];
+
+  sites.forEach(site => {
+    const rowValues = [
+      toStringValue(site.country),
+      getSiteNumberFromSite(site),
+      toStringValue(site.site),
+      toStringValue(site.activation ? formatDateForDisplay(site.activation) : ''),
+      toStringValue(site.siteErMode || 'Global'),
+      toStringValue(site.er),
+      toStringValue(site.max),
+      toStringValue(site.currentEnrollment || 0),
+      site.include ? 'true' : 'false'
+    ];
+
+    rows.push(rowValues.map(toCsvCell).join(','));
+  });
+
+  const csvText = rows.join('\n');
+  const blob = new Blob([csvText], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'site-export.csv';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importSitesFromCsvText(csvText) {
+  const parsed = parseCsvRows(csvText);
+
+  if (!parsed.headerMap) {
+    window.alert('CSV must include a header row and at least one data row.');
+    return;
+  }
+
+  if (parsed.rows.length === 0) {
+    window.alert('No site rows were found in the CSV file.');
+    return;
+  }
+
+  const hasCountry = parsed.headerMap.country !== undefined;
+  const hasSiteNumber = parsed.headerMap.site_number !== undefined;
+  const hasSiteKey = parsed.headerMap.site_key !== undefined;
+
+  if ((!hasCountry || !hasSiteNumber) && !hasSiteKey) {
+    window.alert('CSV must include either "site_key" or both "country" and "site_number" columns.');
+    return;
+  }
+
+  const siteMap = new Map(
+    sites.map(site => [toStringValue(site.siteKey).trim(), site])
+  );
+
+  let updatedCount = 0;
+  const errors = [];
+
+  parsed.rows.forEach(row => {
+    const rowValues = row.values;
+    const rowNumber = row.rowNumber;
+
+    const siteKeyFromFile = readCsvField(rowValues, parsed.headerMap, ['site_key']);
+    const countryValue = readCsvField(rowValues, parsed.headerMap, ['country']);
+    const siteNumberValue = readCsvField(rowValues, parsed.headerMap, ['site_number', 'site_index']);
+    const derivedSiteKey = siteKeyFromFile || (
+      countryValue && siteNumberValue
+        ? `${countryValue}|${siteNumberValue}`
+        : ''
+    );
+
+    if (!derivedSiteKey) {
+      errors.push(`Row ${rowNumber}: Missing site identifier. Provide site_key or country + site_number.`);
+      return;
+    }
+
+    const targetSite = siteMap.get(derivedSiteKey);
+    if (!targetSite) {
+      errors.push(`Row ${rowNumber}: Site "${derivedSiteKey}" not found in current setup.`);
+      return;
+    }
+
+    const piName = readCsvField(rowValues, parsed.headerMap, ['pi_site_name', 'site_name', 'site']);
+    if (piName) {
+      targetSite.site = piName;
+    }
+
+    const activationValue = readCsvField(rowValues, parsed.headerMap, ['activation_date', 'activation']);
+    if (activationValue) {
+      targetSite.activation = normalizeDateInputValue(activationValue);
+    }
+
+    const erModeValue = readCsvField(rowValues, parsed.headerMap, ['er_mode', 'site_er_mode']).toLowerCase();
+    if (erModeValue) {
+      const normalizedMode = erModeValue === 'global'
+        ? 'Global'
+        : erModeValue === 'country'
+          ? 'Country'
+          : erModeValue === 'custom'
+            ? 'Custom'
+            : '';
+
+      if (!normalizedMode) {
+        errors.push(`Row ${rowNumber}: Invalid er_mode value "${erModeValue}". Use Global, Country, or Custom.`);
+      } else {
+        targetSite.siteErMode = normalizedMode;
+      }
+    }
+
+    const erValue = parseImportNumber(
+      readCsvField(rowValues, parsed.headerMap, ['enrollment_rate', 'er']),
+      'enrollment_rate',
+      rowNumber,
+      errors
+    );
+    if (erValue !== null) {
+      targetSite.er = erValue;
+    }
+
+    const maxValue = parseImportNumber(
+      readCsvField(rowValues, parsed.headerMap, ['max_participants', 'max']),
+      'max_participants',
+      rowNumber,
+      errors
+    );
+    if (maxValue !== null) {
+      targetSite.max = maxValue;
+    }
+
+    const currentEnrollmentValue = parseImportNumber(
+      readCsvField(rowValues, parsed.headerMap, ['current_enrollment', 'current']),
+      'current_enrollment',
+      rowNumber,
+      errors
+    );
+    if (currentEnrollmentValue !== null) {
+      targetSite.currentEnrollment = currentEnrollmentValue;
+    }
+
+    const includeValue = readCsvField(rowValues, parsed.headerMap, ['include']);
+    if (includeValue) {
+      const parsedInclude = parseImportBoolean(includeValue);
+      if (parsedInclude === null) {
+        errors.push(`Row ${rowNumber}: Invalid include value "${includeValue}". Use true/false or yes/no.`);
+      } else {
+        targetSite.include = parsedInclude;
+      }
+    }
+
+    updatedCount += 1;
+  });
+
+  renderSiteTable();
+  runForecast();
+
+  const skippedCount = parsed.rows.length - updatedCount;
+  const firstErrors = errors.slice(0, 5);
+  const errorText = firstErrors.length > 0
+    ? `\n\nIssues:\n- ${firstErrors.join('\n- ')}${errors.length > 5 ? '\n- ...' : ''}`
+    : '';
+
+  window.alert(
+    `Site CSV import complete.\nUpdated: ${updatedCount}\nSkipped: ${skippedCount}${errorText}`
+  );
+}
+
 function getScreenFailRatePercent() {
   return getNumberValue('screenFailRateKPI', 0);
 }
@@ -424,9 +1005,28 @@ function calculateSiteMaxParticipants(countryItem, siteIndex, siteCount) {
 }
 
 function buildSiteRows() {
-  const previousSitesByKey = new Map(
-    (sites || []).map(site => [`${site.country}|${site.site}`, site])
-  );
+  const previousSitesByKey = new Map();
+
+  (sites || []).forEach(site => {
+    if (!site) {
+      return;
+    }
+
+    const explicitKey = toStringValue(site.siteKey).trim();
+    if (explicitKey) {
+      previousSitesByKey.set(explicitKey, site);
+    }
+
+    const legacyMatch = toStringValue(site.site).match(/(\d+)$/);
+    if (legacyMatch) {
+      const legacyIndex = Number(legacyMatch[1]);
+      if (legacyIndex > 0) {
+        previousSitesByKey.set(`${site.country}|${legacyIndex}`, site);
+      }
+    }
+
+    previousSitesByKey.set(`${site.country}|${site.site}`, site);
+  });
 
   const nextSites = [];
 
@@ -450,9 +1050,9 @@ function buildSiteRows() {
 
     for (let siteIndex = 0; siteIndex < siteCount; siteIndex += 1) {
       const siteNumber = siteIndex + 1;
-      const siteName = `${country.country}${siteNumber}`;
-      const key = `${country.country}|${siteName}`;
+      const key = `${country.country}|${siteNumber}`;
       const previousSite = previousSitesByKey.get(key);
+      const siteName = previousSite?.site || `${country.country} Site ${siteNumber}`;
 
       const activationDate = parsedEstimatedApprovalDate
         ? addDays(
@@ -484,14 +1084,17 @@ function buildSiteRows() {
       }
 
       const derivedMaxValue =
-        calculateSiteMaxParticipants(
-          country,
-          siteIndex,
-          siteCount
-        );
+        previousSite && previousSite.max !== undefined
+          ? toFiniteNumber(previousSite.max, 0)
+          : calculateSiteMaxParticipants(
+              country,
+              siteIndex,
+              siteCount
+            );
 
       nextSites.push({
-        include: Boolean(country.initialCountry),
+        siteKey: key,
+        include: previousSite ? Boolean(previousSite.include) : Boolean(country.initialCountry),
         country: country.country,
         site: siteName,
         activation: derivedActivationValue,
@@ -815,6 +1418,169 @@ function removeScenario(id) {
   runForecast();
 }
 
+function buildIncludedSitesWithAdditionalCountries(additionalCountries) {
+  const additionalCountrySet = new Set(additionalCountries);
+
+  return sites
+    .filter(site => site.include || additionalCountrySet.has(site.country))
+    .map(site => ({
+      ...site,
+      include: site.include || additionalCountrySet.has(site.country)
+    }));
+}
+
+function evaluateCountryAddOnCombination(additionalCountries, target, targetLpi) {
+  const includedSites = buildIncludedSitesWithAdditionalCountries(additionalCountries);
+  const forecastMonths = generateForecastMonths(includedSites, targetLpi);
+  const forecast = calculateForecastForSites(includedSites, forecastMonths, target);
+  const lpiRow = forecast.find(row => row.cumulative >= target) || null;
+  const projected = forecast.length > 0
+    ? Number(forecast[forecast.length - 1].cumulative || 0)
+    : includedSites.reduce((sum, site) => sum + Number(site.currentEnrollment || 0), 0);
+
+  return {
+    countries: additionalCountries,
+    countryCount: additionalCountries.length,
+    forecast,
+    lpiRow,
+    reachesTarget: Boolean(lpiRow),
+    lpiTime: lpiRow ? new Date(`${lpiRow.month}T00:00:00`).getTime() : Number.POSITIVE_INFINITY,
+    projected
+  };
+}
+
+function compareCombinationQuality(a, b) {
+  if (a.reachesTarget && !b.reachesTarget) return 1;
+  if (!a.reachesTarget && b.reachesTarget) return -1;
+
+  if (a.reachesTarget && b.reachesTarget) {
+    if (a.lpiTime < b.lpiTime) return 1;
+    if (a.lpiTime > b.lpiTime) return -1;
+  } else {
+    if (a.projected > b.projected) return 1;
+    if (a.projected < b.projected) return -1;
+  }
+
+  if (a.countryCount < b.countryCount) return 1;
+  if (a.countryCount > b.countryCount) return -1;
+
+  if (a.projected > b.projected) return 1;
+  if (a.projected < b.projected) return -1;
+
+  return 0;
+}
+
+function findBestCountryAddOnCombination(candidateCountries, target, targetLpi) {
+  if (candidateCountries.length === 0) {
+    return null;
+  }
+
+  let best = null;
+
+  if (candidateCountries.length <= 12) {
+    const totalCombinations = (2 ** candidateCountries.length) - 1;
+
+    for (let mask = 1; mask <= totalCombinations; mask += 1) {
+      const selected = candidateCountries.filter((_, index) => (mask & (1 << index)) !== 0);
+      const evaluation = evaluateCountryAddOnCombination(selected, target, targetLpi);
+
+      if (!best || compareCombinationQuality(evaluation, best) > 0) {
+        best = evaluation;
+      }
+    }
+
+    return best;
+  }
+
+  let selectedCountries = [];
+  let remainingCountries = [...candidateCountries];
+  let currentBest = evaluateCountryAddOnCombination(selectedCountries, target, targetLpi);
+
+  while (remainingCountries.length > 0) {
+    let bestStep = null;
+
+    remainingCountries.forEach(country => {
+      const trialCountries = [...selectedCountries, country];
+      const trialEvaluation = evaluateCountryAddOnCombination(trialCountries, target, targetLpi);
+
+      if (!bestStep || compareCombinationQuality(trialEvaluation, bestStep) > 0) {
+        bestStep = trialEvaluation;
+      }
+    });
+
+    if (!bestStep || compareCombinationQuality(bestStep, currentBest) <= 0) {
+      break;
+    }
+
+    currentBest = bestStep;
+    selectedCountries = bestStep.countries;
+    remainingCountries = remainingCountries.filter(country => !selectedCountries.includes(country));
+
+    if (currentBest.reachesTarget) {
+      break;
+    }
+  }
+
+  return currentBest.countryCount > 0 ? currentBest : null;
+}
+
+function generateBestAddOnScenario() {
+  buildSiteRows();
+
+  const target = getNumberValue('targetEnrollmentKPI', 0);
+  const targetLpi = getTextValue('targetLpiKPI', '');
+  const includedCountrySet = new Set(
+    sites.filter(site => site.include).map(site => site.country)
+  );
+
+  const candidateCountries = [...new Set(
+    countryAssumptions
+      .map(country => toStringValue(country.country).trim())
+      .filter(country => country && !includedCountrySet.has(country))
+  )];
+
+  if (candidateCountries.length === 0) {
+    window.alert('No additional countries are available to generate an add-on scenario.');
+    return;
+  }
+
+  const baseline = evaluateCountryAddOnCombination([], target, targetLpi);
+  const best = findBestCountryAddOnCombination(candidateCountries, target, targetLpi);
+
+  if (!best || best.countryCount === 0) {
+    window.alert('No beneficial country add-on combination was found.');
+    return;
+  }
+
+  if (compareCombinationQuality(best, baseline) <= 0) {
+    window.alert('Current included countries are already as effective as the tested add-on combinations.');
+    return;
+  }
+
+  scenarios = scenarios.filter(scenario => !toStringValue(scenario.name).startsWith('Generated - Fastest Add-On'));
+
+  scenarios.push({
+    id: nextScenarioId++,
+    name: `Generated - Fastest Add-On (${best.countryCount})`,
+    enabled: true,
+    screenFailRate: 0,
+    enrollmentRate: 0,
+    activationTimingAdjustment: 0,
+    selectedCountries: best.countries
+  });
+
+  renderScenarioList();
+  runForecast();
+
+  const baselineLpiLabel = baseline.reachesTarget ? formatDate(baseline.lpiRow.month) : 'Target Not Met';
+  const bestLpiLabel = best.reachesTarget ? formatDate(best.lpiRow.month) : 'Target Not Met';
+  const countryListLabel = best.countries.join(', ');
+
+  window.alert(
+    `Generated best add-on scenario.\nCountries: ${countryListLabel}\nBaseline LPI: ${baselineLpiLabel}\nGenerated LPI: ${bestLpiLabel}`
+  );
+}
+
 function handleScenarioFieldChange(event) {
   const id = Number(event.target.dataset.scenarioId);
   if (!id) return;
@@ -959,7 +1725,13 @@ function renderSiteTable() {
 
   <td>${site.country}</td>
 
-  <td>${site.site}</td>
+  <td>
+    <input
+      type="text"
+      value="${site.site}"
+      data-field="site"
+      data-index="${index}" />
+  </td>
 
   <td>
     <input
@@ -1727,6 +2499,7 @@ function runForecast() {
   const target = getNumberValue('targetEnrollmentKPI', 0);
   const screenFailRate = getNumberValue('screenFailRateKPI', 0);
   const screeningWindow = getNumberValue('screeningWindowKPI', 0);
+  const averagePricePerParticipant = getNumberValue('averagePricePerParticipantKPI', 0);
   const targetFpsDateValue = getTextValue('targetFpsDateKPI', '');
   const targetLpi = getTextValue('targetLpiKPI', '');
 
@@ -1752,6 +2525,10 @@ const minimumScreeningsNeeded = screenFailDecimal >= 1
 setValueIfExists(
   'expectedFpiDate',
   expectedFpiDate ? formatDate(expectedFpiDate) : ''
+);
+setValueIfExists(
+  'totalEnrollmentCost',
+  formatCurrency(target * averagePricePerParticipant)
 );
 if (parsedTargetFpsDate) {
   setValueIfExists(
@@ -1813,6 +2590,13 @@ if (forecast.length === 0) {
   renderSiteActivationCurveChart([]);
   renderCountryContributionChart([]);
   renderScenarioComparisonTable(includedSites, [], allScenarioSitesList, allScenarioForecasts, target);
+  renderCurrentStateSummary({
+    forecast: [],
+    target,
+    lpiRow: null,
+    parsedTargetLpiDate,
+    includedSites
+  });
   return;
 }
 
@@ -1871,6 +2655,13 @@ const siteActivationCurve = calculateSiteActivationCurve(activationCurveSites, t
 renderSiteActivationCurveChart(siteActivationCurve);
 
 renderScenarioComparisonTable(includedSites, forecast, allScenarioSitesList, allScenarioForecasts, target);
+renderCurrentStateSummary({
+  forecast,
+  target,
+  lpiRow,
+  parsedTargetLpiDate,
+  includedSites
+});
 }
 
 function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioSitesList, allScenarioForecasts, target) {
@@ -1992,17 +2783,208 @@ function formatMonthLabel(monthValue) {
   return `${month}-${year}`;
 }
 
+function formatPercent(value) {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) {
+    return '0.0%';
+  }
+  return `${numericValue.toFixed(1)}%`;
+}
+
+function formatEnrollmentRate(value) {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) {
+    return '0.00';
+  }
+  return numericValue.toFixed(2);
+}
+
+function formatCurrency(value) {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) {
+    return '$0';
+  }
+
+  return numericValue.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  });
+}
+
+function renderCurrentStateChart(forecast, currentEnrollmentTotal) {
+  const chart = document.getElementById('currentStateChart');
+  if (!chart) {
+    return;
+  }
+
+  chart.innerHTML = '';
+
+  if (!forecast || forecast.length === 0) {
+    chart.innerHTML = '<p class="empty-chart-message">No forecast data to compare yet. Add site details and run the forecast.</p>';
+    return;
+  }
+
+  const width = Math.max(900, forecast.length * 55);
+  const height = 360;
+  const padding = { top: 28, right: 24, bottom: 72, left: 64 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const maxY = Math.max(
+    1,
+    Number(currentEnrollmentTotal || 0),
+    ...forecast.map(row => Number(row.cumulative || 0))
+  );
+
+  const xStep = chartWidth / Math.max(1, forecast.length - 1);
+  const getX = index => padding.left + (index * xStep);
+  const getY = value => padding.top + chartHeight - ((Number(value || 0) / maxY) * chartHeight);
+
+  const forecastPoints = forecast
+    .map((row, index) => `${getX(index)},${getY(row.cumulative)}`)
+    .join(' ');
+
+  const currentY = getY(currentEnrollmentTotal);
+  const tickCount = 5;
+  const yTicks = Array.from({ length: tickCount + 1 }, (_, i) => {
+    const value = Math.round((maxY / tickCount) * i);
+    const y = getY(value);
+    return `
+      <line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#f0f4f8" stroke-width="1"></line>
+      <text x="${padding.left - 8}" y="${y + 4}" font-size="11" fill="#667085" text-anchor="end">${value}</text>
+    `;
+  }).join('');
+
+  const labelStep = Math.max(1, Math.ceil(forecast.length / 12));
+  const xLabels = forecast
+    .map((row, index) => {
+      if (index % labelStep !== 0 && index !== forecast.length - 1) {
+        return '';
+      }
+
+      const x = getX(index);
+      const y = height - 28;
+      return `
+        <text x="${x}" y="${y}" font-size="11" fill="#667085" text-anchor="end" transform="rotate(-45 ${x} ${y})">
+          ${formatMonthLabel(row.month)}
+        </text>
+      `;
+    })
+    .join('');
+
+  chart.innerHTML = `
+    <svg class="current-state-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Current enrollment versus forecast baseline">
+      ${yTicks}
+      <line x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" stroke="#98a2b3" stroke-width="1"></line>
+      <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartHeight}" stroke="#98a2b3" stroke-width="1"></line>
+
+      <line x1="${padding.left}" y1="${currentY}" x2="${width - padding.right}" y2="${currentY}" stroke="#b42318" stroke-width="2" stroke-dasharray="6 4"></line>
+      <text x="${width - padding.right}" y="${currentY - 8}" font-size="12" fill="#b42318" text-anchor="end">Current: ${formatEnrollment(currentEnrollmentTotal)}</text>
+
+      <polyline points="${forecastPoints}" fill="none" stroke="#2563eb" stroke-width="3"></polyline>
+      ${forecast.map((row, index) => `
+        <circle cx="${getX(index)}" cy="${getY(row.cumulative)}" r="3.5" fill="#2563eb"></circle>
+      `).join('')}
+
+      ${xLabels}
+      <text x="${padding.left}" y="16" font-size="13" fill="#172033" font-weight="700">Baseline Forecast vs Current Enrollment</text>
+      <text x="${padding.left + 260}" y="16" font-size="12" fill="#2563eb" font-weight="600">— Forecast Cumulative</text>
+      <text x="${padding.left + 460}" y="16" font-size="12" fill="#b42318" font-weight="600">- - Current Baseline</text>
+    </svg>
+  `;
+}
+
+function renderCurrentStateSummary({ forecast, target, lpiRow, parsedTargetLpiDate, includedSites }) {
+  const currentEnrollmentTotal = includedSites.reduce(
+    (sum, site) => sum + Number(site.currentEnrollment || 0),
+    0
+  );
+  const activeSites = includedSites.length;
+  const averageEnrollmentRate = activeSites > 0
+    ? includedSites.reduce((sum, site) => sum + Number(site.er || 0), 0) / activeSites
+    : 0;
+
+  const progressPercent = target > 0
+    ? (currentEnrollmentTotal / target) * 100
+    : 0;
+
+  const forecastLpiLabel = lpiRow ? formatDate(lpiRow.month) : 'Target Not Met';
+  const targetLpiLabel = parsedTargetLpiDate ? formatDate(parsedTargetLpiDate) : 'No Target';
+
+  setTextIfExists(
+    'currentStateLpiComparison',
+    `${forecastLpiLabel} vs ${targetLpiLabel}`
+  );
+  setTextIfExists(
+    'currentStateEnrollmentProgress',
+    `${formatEnrollment(currentEnrollmentTotal)}/${formatEnrollment(target)} (${formatPercent(progressPercent)})`
+  );
+  setTextIfExists('currentStateActiveSites', String(activeSites));
+  setTextIfExists('currentStateEnrollmentRate', formatEnrollmentRate(averageEnrollmentRate));
+
+  let paceStatusText = '--';
+  let paceStatusClass = '';
+
+  const asOfInputValue = getTextValue('currentStateAsOfDate', '');
+  const parsedAsOfDate = parseDateInput(asOfInputValue);
+  const effectiveAsOfDate = parsedAsOfDate || new Date();
+  const asOfMonthStart = new Date(
+    effectiveAsOfDate.getFullYear(),
+    effectiveAsOfDate.getMonth(),
+    1
+  );
+
+  if (forecast && forecast.length > 0) {
+    if (parsedAsOfDate) {
+      setValueIfExists('currentStateAsOfDate', formatDate(parsedAsOfDate));
+    }
+
+    const expectedRow = forecast
+      .filter(row => {
+        const rowMonth = new Date(`${row.month}T00:00:00`);
+        return rowMonth <= asOfMonthStart;
+      })
+      .slice(-1)[0];
+
+    const expectedEnrollmentNow = expectedRow ? Number(expectedRow.cumulative || 0) : 0;
+    const tolerance = Math.max(1, expectedEnrollmentNow * 0.05);
+    const delta = currentEnrollmentTotal - expectedEnrollmentNow;
+
+    if (expectedEnrollmentNow <= 0) {
+      paceStatusText = `On Track as of ${formatDate(effectiveAsOfDate)}`;
+      paceStatusClass = 'status-good';
+    } else if (delta >= -tolerance) {
+      paceStatusText = `On Track as of ${formatDate(effectiveAsOfDate)} (${formatEnrollment(currentEnrollmentTotal)} vs ${formatEnrollment(expectedEnrollmentNow)} expected)`;
+      paceStatusClass = 'status-good';
+    } else {
+      paceStatusText = `Behind Pace as of ${formatDate(effectiveAsOfDate)} (${formatEnrollment(currentEnrollmentTotal)} vs ${formatEnrollment(expectedEnrollmentNow)} expected)`;
+      paceStatusClass = 'status-risk';
+    }
+  }
+
+  const paceElement = document.getElementById('currentStatePaceStatus');
+  if (paceElement) {
+    paceElement.textContent = paceStatusText;
+    paceElement.className = paceStatusClass || '';
+  }
+
+  renderCurrentStateChart(forecast, currentEnrollmentTotal);
+}
+
 function calculateMonthlyByCountry(includedSites, forecastMonths) {
   const siteEnrolled = {};
   includedSites.forEach(site => {
-    siteEnrolled[site.site] = Number(site.currentEnrollment || 0);
+    const siteKey = site.siteKey || `${site.country}|${site.site}`;
+    siteEnrolled[siteKey] = Number(site.currentEnrollment || 0);
   });
 
   return forecastMonths.map(month => {
     const breakdown = {};
     includedSites.forEach(site => {
-      const increment = calculateMonthlySiteEnrollment(site, month, siteEnrolled[site.site]);
-      siteEnrolled[site.site] += increment;
+      const siteKey = site.siteKey || `${site.country}|${site.site}`;
+      const increment = calculateMonthlySiteEnrollment(site, month, siteEnrolled[siteKey]);
+      siteEnrolled[siteKey] += increment;
       if (increment > 0) {
         breakdown[site.country] = (breakdown[site.country] || 0) + increment;
       }
@@ -2242,6 +3224,23 @@ function setupNavigation() {
       if (selectedView) {
         selectedView.classList.add('active');
       }
+
+      const parentGroup = button.closest('.nav-group');
+      if (parentGroup) {
+        parentGroup.classList.add('expanded');
+      }
+    });
+  });
+}
+
+function setupNavHierarchy() {
+  document.querySelectorAll('[data-nav-group-toggle]').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const group = toggle.closest('.nav-group');
+
+      if (group) {
+        group.classList.toggle('expanded');
+      }
     });
   });
 }
@@ -2262,8 +3261,10 @@ if (studyNameInput) {
     'screenFailRateKPI',
     'screeningWindowKPI',
     'globalEnrollmentRateKPI',
+    'averagePricePerParticipantKPI',
     'targetFpsDateKPI',
-    'targetLpiKPI'
+    'targetLpiKPI',
+    'currentStateAsOfDate'
   ];
 
   const refreshStudySetup = () => {
@@ -2305,10 +3306,92 @@ if (studyNameInput) {
   if (addHistoricalButton) {
     addHistoricalButton.addEventListener('click', addHistoricalApprovalRow);
   }
+
+  const saveStateButton = document.getElementById('saveStateBtn');
+  if (saveStateButton) {
+    saveStateButton.addEventListener('click', saveStateToFile);
+  }
+
+  const loadStateButton = document.getElementById('loadStateBtn');
+  const loadStateFileInput = document.getElementById('loadStateFile');
+
+  if (loadStateButton && loadStateFileInput) {
+    loadStateButton.addEventListener('click', () => {
+      loadStateFileInput.value = '';
+      loadStateFileInput.click();
+    });
+
+    loadStateFileInput.addEventListener('change', event => {
+      const selectedFile = event.target.files && event.target.files[0];
+
+      if (!selectedFile) {
+        window.alert('Please select a JSON file to load.');
+        return;
+      }
+
+      readFileAsText(
+        selectedFile,
+        fileText => {
+          loadStateFromText(fileText);
+        },
+        message => {
+          window.alert(message);
+        }
+      );
+    });
+  }
+
+  const downloadSiteCsvTemplateBtn = document.getElementById('downloadSiteCsvTemplateBtn');
+  if (downloadSiteCsvTemplateBtn) {
+    downloadSiteCsvTemplateBtn.addEventListener('click', downloadSiteCsvTemplate);
+  }
+
+  const importSiteCsvBtn = document.getElementById('importSiteCsvBtn');
+  const siteCsvFileInput = document.getElementById('siteCsvFileInput');
+
+  if (importSiteCsvBtn && siteCsvFileInput) {
+    importSiteCsvBtn.addEventListener('click', () => {
+      siteCsvFileInput.value = '';
+      siteCsvFileInput.click();
+    });
+
+    siteCsvFileInput.addEventListener('change', event => {
+      const selectedFile = event.target.files && event.target.files[0];
+
+      if (!selectedFile) {
+        window.alert('Please select a CSV file to import.');
+        return;
+      }
+
+      readFileAsText(
+        selectedFile,
+        fileText => {
+          importSitesFromCsvText(fileText);
+        },
+        message => {
+          window.alert(message);
+        }
+      );
+    });
+  }
+
+  const exportSiteCsvBtn = document.getElementById('exportSiteCsvBtn');
+  if (exportSiteCsvBtn) {
+    exportSiteCsvBtn.addEventListener('click', exportSitesToCsv);
+  }
+}
+
+function initializeCurrentStateAsOfDate() {
+  const existingValue = getTextValue('currentStateAsOfDate', '').trim();
+  if (!existingValue) {
+    setValueIfExists('currentStateAsOfDate', formatDate(new Date()));
+  }
 }
 
 setupNavigation();
+setupNavHierarchy();
 setupInputListeners();
+initializeCurrentStateAsOfDate();
 populateCountryDatalist();
 
 renderHistoricalApprovalTable();
@@ -2320,6 +3403,11 @@ renderScenarioList();
 const addScenarioBtn = document.getElementById('addScenarioBtn');
 if (addScenarioBtn) {
   addScenarioBtn.addEventListener('click', addScenario);
+}
+
+const generateBestScenarioBtn = document.getElementById('generateBestScenarioBtn');
+if (generateBestScenarioBtn) {
+  generateBestScenarioBtn.addEventListener('click', generateBestAddOnScenario);
 }
 
 runForecast();
