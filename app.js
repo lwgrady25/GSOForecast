@@ -2544,7 +2544,7 @@ function flashRunForecastButtons(success) {
   });
 }
 
-function validateForecastInputs() {
+function validateForecastInputs(highlightErrors = true) {
   const issues = [];
 
   // Clear previous error highlights
@@ -2553,16 +2553,16 @@ function validateForecastInputs() {
   const targetEl = document.getElementById('targetEnrollmentKPI');
   if (!targetEl || !targetEl.value || Number(targetEl.value) <= 0) {
     issues.push('Target Enrollment must be greater than 0');
-    if (targetEl) targetEl.classList.add('input-error');
+    if (highlightErrors && targetEl) targetEl.classList.add('input-error');
   }
 
   const fpsEl = document.getElementById('targetFpsDateKPI');
   if (!fpsEl || !fpsEl.value.trim()) {
     issues.push('Target FPS Date is required');
-    if (fpsEl) fpsEl.classList.add('input-error');
+    if (highlightErrors && fpsEl) fpsEl.classList.add('input-error');
   } else if (!parseDateInput(fpsEl.value.trim())) {
     issues.push('Target FPS Date format is not recognized (try DD-Mon-YYYY or YYYY-MM-DD)');
-    fpsEl.classList.add('input-error');
+    if (highlightErrors) fpsEl.classList.add('input-error');
   }
 
   const includedSites = sites.filter(s => s.include);
@@ -2576,11 +2576,13 @@ function validateForecastInputs() {
   }
 
   if (issues.length > 0) {
-    const list = document.getElementById('validationToastList');
-    const toast = document.getElementById('validationToast');
-    if (list && toast) {
-      list.innerHTML = issues.map(i => `<li>${i}</li>`).join('');
-      toast.classList.add('visible');
+    if (highlightErrors) {
+      const list = document.getElementById('validationToastList');
+      const toast = document.getElementById('validationToast');
+      if (list && toast) {
+        list.innerHTML = issues.map(i => `<li>${i}</li>`).join('');
+        toast.classList.add('visible');
+      }
     }
     return false;
   }
@@ -2591,8 +2593,8 @@ function validateForecastInputs() {
   return true;
 }
 
-function runForecast() {
-  if (!validateForecastInputs()) {
+function runForecast(highlightErrors = true) {
+  if (!validateForecastInputs(highlightErrors)) {
     flashRunForecastButtons(false);
     return;
   }
@@ -3565,5 +3567,4 @@ if (generateBestScenarioBtn) {
   generateBestScenarioBtn.addEventListener('click', generateBestAddOnScenario);
 }
 
-runForecast();
-  
+runForecast(false);
