@@ -323,7 +323,7 @@ function parseDateInput(value) {
     dec: 11,
     december: 11
   };
-  const monthNameMatch = trimmedValue.match(/^(\d{1,2})[-/.]([a-zA-Z]+)[-/.](\d{4})$/);
+  const monthNameMatch = trimmedValue.match(/^(\d{1,2})[-/. ]?([a-zA-Z]+)[-/. ]?(\d{4})$/);
 
   if (monthNameMatch) {
     const [, day, monthName, year] = monthNameMatch;
@@ -339,7 +339,7 @@ function parseDateInput(value) {
 );
 
 if (slashDateMatch) {
-  const [, month, day, year] = slashDateMatch;
+  const [, day, month, year] = slashDateMatch;  // DD/MM/YYYY
 
   return new Date(
     Number(year),
