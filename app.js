@@ -3349,6 +3349,27 @@ function setupNavHierarchy() {
   });
 }
 
+function setupDateAutoFormat() {
+  // Selector covers the static dashboard/current-state date inputs
+  // and the dynamic per-site activation date cells (data-field="activation")
+  const DATE_INPUT_SELECTOR = '#targetFpsDateKPI, #targetLpiKPI, #currentStateAsOfDate, [data-field="activation"]';
+
+  // focusout bubbles (unlike blur), so one listener on document handles
+  // both static inputs and dynamically rendered site-table inputs
+  document.addEventListener('focusout', event => {
+    const el = event.target;
+    if (!el.matches(DATE_INPUT_SELECTOR)) return;
+
+    const raw = el.value.trim();
+    if (!raw) return;
+
+    const parsed = parseDateInput(raw);
+    if (parsed && !Number.isNaN(parsed.getTime())) {
+      el.value = formatDate(parsed);   // DD-Mmm-YYYY
+    }
+  });
+}
+
 function setupGlobalActionButtons() {
   document.querySelectorAll('[data-global-action]').forEach(button => {
     button.addEventListener('click', () => {
@@ -3524,6 +3545,7 @@ setupNavigation();
 setupNavHierarchy();
 setupInputListeners();
 setupGlobalActionButtons();
+setupDateAutoFormat();
 initializeCurrentStateAsOfDate();
 populateCountryDatalist();
 
