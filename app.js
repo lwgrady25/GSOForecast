@@ -2565,11 +2565,11 @@ function validateForecastInputs() {
     fpsEl.classList.add('input-error');
   }
 
-  const includedSites = studyInputs.sites.filter(s => s.include);
+  const includedSites = sites.filter(s => s.include);
   if (includedSites.length === 0) {
     issues.push('At least one site must be included (check Site Information)');
   } else {
-    const missingActivation = includedSites.filter(s => !s.activationDate);
+    const missingActivation = includedSites.filter(s => !s.activation);
     if (missingActivation.length > 0) {
       issues.push(`${missingActivation.length} included site(s) are missing an Activation Date`);
     }
