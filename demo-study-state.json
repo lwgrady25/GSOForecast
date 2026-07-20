@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "savedAt": "2026-07-20T14:20:00.000Z",
+  "studyInputs": {
+    "studyName": "HELIOS-301 Ongoing Enrollment",
+    "targetEnrollmentKPI": "220",
+    "screenFailRateKPI": "15",
+    "screeningWindowKPI": "14",
+    "globalEnrollmentRateKPI": "0.35",
+    "averagePricePerParticipantKPI": "5000",
+    "targetFpsDateKPI": "01-Sep-2026",
+    "targetLpiKPI": "31-Mar-2027",
+    "currentStateAsOfDate": "20-Jul-2026"
+  },
+  "historicalApprovalDays": [
+    {
+      "country": "United States",
+      "approvalDays": 60
+    },
+    {
+      "country": "Germany",
+      "approvalDays": 127
+    },
+    {
+      "country": "Spain",
+      "approvalDays": 118
+    },
+    {
+      "country": "Canada",
+      "approvalDays": 46
+    }
+  ],
+  "countryAssumptions": [
+    {
+      "country": "United States",
+      "initialCountry": true,
+      "countryEr": 0.4,
+      "participantsPerCountry": 120,
+      "siteCount": 4,
+      "averageTimeToActivateSite": 30,
+      "submissionDate": "2026-01-01",
+      "approvalDays": null
+    },
+    {
+      "country": "Germany",
+      "initialCountry": false,
+      "countryEr": 0.32,
+      "participantsPerCountry": 80,
+      "siteCount": 3,
+      "averageTimeToActivateSite": 40,
+      "submissionDate": "2026-01-15",
+      "approvalDays": null
+    },
+    {
+      "country": "Spain",
+      "initialCountry": false,
+      "countryEr": 0.28,
+      "participantsPerCountry": 70,
+      "siteCount": 2,
+      "averageTimeToActivateSite": 35,
+      "submissionDate": "2026-02-01",
+      "approvalDays": null
+    },
+    {
+      "country": "Canada",
+      "initialCountry": false,
+      "countryEr": 0.3,
+      "participantsPerCountry": 50,
+      "siteCount": 2,
+      "averageTimeToActivateSite": 28,
+      "submissionDate": "2026-02-20",
+      "approvalDays": null
+    }
+  ],
+  "sites": [
+    {
+      "siteKey": "United States|1",
+      "include": true,
+      "country": "United States",
+      "site": "Dr. Adams - Boston",
+      "activation": "2026-02-15",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 30,
+      "currentEnrollment": 22
+    },
+    {
+      "siteKey": "United States|2",
+      "include": true,
+      "country": "United States",
+      "site": "Dr. Nguyen - Chicago",
+      "activation": "2026-03-01",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 30,
+      "currentEnrollment": 18
+    },
+    {
+      "siteKey": "United States|3",
+      "include": true,
+      "country": "United States",
+      "site": "Dr. Patel - Dallas",
+      "activation": "2026-03-15",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 30,
+      "currentEnrollment": 15
+    },
+    {
+      "siteKey": "United States|4",
+      "include": true,
+      "country": "United States",
+      "site": "Dr. Rivera - Seattle",
+      "activation": "2026-04-01",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 30,
+      "currentEnrollment": 10
+    },
+    {
+      "siteKey": "Germany|1",
+      "include": true,
+      "country": "Germany",
+      "site": "Prof. Weber - Berlin",
+      "activation": "2026-03-20",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 26,
+      "currentEnrollment": 14
+    },
+    {
+      "siteKey": "Germany|2",
+      "include": true,
+      "country": "Germany",
+      "site": "Dr. Klein - Munich",
+      "activation": "2026-04-05",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 26,
+      "currentEnrollment": 9
+    },
+    {
+      "siteKey": "Germany|3",
+      "include": true,
+      "country": "Germany",
+      "site": "Dr. Hoffmann - Hamburg",
+      "activation": "2026-04-20",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 25,
+      "currentEnrollment": 6
+    },
+    {
+      "siteKey": "Spain|1",
+      "include": true,
+      "country": "Spain",
+      "site": "Dr. Alvarez - Madrid",
+      "activation": "2026-05-10",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 20,
+      "currentEnrollment": 4
+    },
+    {
+      "siteKey": "Spain|2",
+      "include": true,
+      "country": "Spain",
+      "site": "Dr. Garcia - Barcelona",
+      "activation": "2026-05-25",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 20,
+      "currentEnrollment": 2
+    },
+    {
+      "siteKey": "Canada|1",
+      "include": false,
+      "country": "Canada",
+      "site": "Dr. Chen - Toronto",
+      "activation": "2026-06-15",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 15,
+      "currentEnrollment": 1
+    },
+    {
+      "siteKey": "Canada|2",
+      "include": false,
+      "country": "Canada",
+      "site": "Dr. Singh - Vancouver",
+      "activation": "2026-07-01",
+      "siteErMode": "Global",
+      "er": 0.35,
+      "max": 15,
+      "currentEnrollment": 0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": 1,
+      "name": "Generated - Fastest Add-On (1)",
+      "enabled": true,
+      "screenFailRate": 0,
+      "enrollmentRate": 0,
+      "activationTimingAdjustment": 0,
+      "selectedCountries": [
+        "Canada"
+      ]
+    }
+  ],
+  "nextScenarioId": 2
+}

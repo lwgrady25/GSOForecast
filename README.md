@@ -22,6 +22,7 @@ This is a zero-build, browser-based MVP prototype for the GSO clinical enrollmen
 - Click **Save** in the dashboard header to download the current forecast setup as a JSON file.
 - Click **Load** to import a previously saved JSON file and restore study inputs, countries, sites, and scenarios.
 - After loading, review values and click **Run Forecast** if you want to immediately refresh outputs.
+- A shareable example file is included at [demo-study-state.json](</C:/Users/lo908083/OneDrive - BioMarin/Desktop/GSOForecast_MVP/demo-study-state.json>).
 
 ## Site CSV import
 - In **Site Information**, click **Download Site CSV Template** to get the required columns.
