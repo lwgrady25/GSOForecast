@@ -297,14 +297,39 @@ function parseDateInput(value) {
     return null;
   }
 
-  const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-  const monthNameMatch = trimmedValue.match(/^(\d{1,2})[-/.](jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[-/.](\d{4})$/i);
+  const monthAliases = {
+    jan: 0,
+    january: 0,
+    feb: 1,
+    february: 1,
+    mar: 2,
+    march: 2,
+    apr: 3,
+    april: 3,
+    may: 4,
+    jun: 5,
+    june: 5,
+    jul: 6,
+    july: 6,
+    aug: 7,
+    august: 7,
+    sep: 8,
+    sept: 8,
+    september: 8,
+    oct: 9,
+    october: 9,
+    nov: 10,
+    november: 10,
+    dec: 11,
+    december: 11
+  };
+  const monthNameMatch = trimmedValue.match(/^(\d{1,2})[-/.]([a-zA-Z]+)[-/.](\d{4})$/);
 
   if (monthNameMatch) {
     const [, day, monthName, year] = monthNameMatch;
-    const monthIndex = monthNames.indexOf(monthName.toLowerCase());
+    const monthIndex = monthAliases[monthName.toLowerCase()];
 
-    if (monthIndex >= 0) {
+    if (monthIndex !== undefined) {
       return new Date(Number(year), monthIndex, Number(day));
     }
   }
@@ -1366,22 +1391,23 @@ function renderCountryAssumptionsTable() {
   <input
     type="text"
     list="countryOptions"
+    class="input-required"
     value="${country.country}"
     data-field="country"
     data-index="${index}" />
 </td>
-      <td>
-        <select data-field="initialCountry" data-index="${index}">
-          <option value="true" ${country.initialCountry ? 'selected' : ''}>Yes</option>
-          <option value="false" ${!country.initialCountry ? 'selected' : ''}>No</option>
-        </select>
-      </td>
-      <td><input type="number" step="0.01" value="${country.countryEr}" data-field="countryEr" data-index="${index}" /></td>
-      <td><input type="number" step="1" value="${country.participantsPerCountry}" data-field="participantsPerCountry" data-index="${index}" /></td>
-      <td data-derived="participantsWithScreenFail">${participantsWithScreenFail}</td>
-      <td><input type="number" step="1" value="${country.siteCount}" data-field="siteCount" data-index="${index}" /></td>
-      <td><input type="number" step="1" value="${country.averageTimeToActivateSite || ''}" data-field="averageTimeToActivateSite" data-index="${index}" /></td>
-      <td><input type="text" value="${country.submissionDate ? formatDateForDisplay(country.submissionDate) : ''}" placeholder="DD-MMM-YYYY" data-field="submissionDate" data-index="${index}" /></td>
+    <td>
+      <select class="input-required" data-field="initialCountry" data-index="${index}">
+        <option value="true" ${country.initialCountry ? 'selected' : ''}>Yes</option>
+        <option value="false" ${!country.initialCountry ? 'selected' : ''}>No</option>
+      </select>
+    </td>
+    <td><input type="number" step="0.01" value="${country.countryEr}" data-field="countryEr" data-index="${index}" /></td>
+    <td><input class="input-required" type="number" step="1" value="${country.participantsPerCountry}" data-field="participantsPerCountry" data-index="${index}" /></td>
+    <td data-derived="participantsWithScreenFail">${participantsWithScreenFail}</td>
+    <td><input class="input-required" type="number" step="1" value="${country.siteCount}" data-field="siteCount" data-index="${index}" /></td>
+    <td><input class="input-required" type="number" step="1" value="${country.averageTimeToActivateSite || ''}" data-field="averageTimeToActivateSite" data-index="${index}" /></td>
+    <td><input class="input-required" type="text" value="${country.submissionDate ? formatDateForDisplay(country.submissionDate) : ''}" placeholder="DD-MMM-YYYY" data-field="submissionDate" data-index="${index}" /></td>
       <td data-derived="estimatedApproval">${estimatedApproval ? formatDate(estimatedApproval) : ''}</td>
       <td data-derived="targetSubmissionDateForFps">${targetSubmissionDateForFps ? formatDate(targetSubmissionDateForFps) : ''}</td>
     `;
@@ -1719,6 +1745,7 @@ function renderSiteTable() {
   <td>
     <input type="checkbox"
       ${site.include ? 'checked' : ''}
+      class="input-required"
       data-field="include"
       data-index="${index}" />
   </td>
@@ -1728,6 +1755,7 @@ function renderSiteTable() {
   <td>
     <input
       type="text"
+      class="input-required"
       value="${site.site}"
       data-field="site"
       data-index="${index}" />
@@ -1736,6 +1764,7 @@ function renderSiteTable() {
   <td>
     <input
       type="text"
+      class="input-required"
       value="${site.activation ? formatDateForDisplay(site.activation) : ''}"
       placeholder="DD-MMM-YYYY"
       data-field="activation"
@@ -1744,6 +1773,7 @@ function renderSiteTable() {
 
   <td>
     <select
+      class="input-required"
       data-field="siteErMode"
       data-index="${index}">
       <option value="Country"
@@ -1765,6 +1795,7 @@ function renderSiteTable() {
     <input
       type="number"
       step="0.01"
+      class="input-required"
       value="${site.er}"
       data-field="er"
       data-index="${index}"
@@ -1774,6 +1805,7 @@ function renderSiteTable() {
   <td>
     <input
       type="number"
+      class="input-required"
       value="${site.max}"
       data-field="max"
       data-index="${index}" />
@@ -1782,6 +1814,7 @@ function renderSiteTable() {
   <td>
     <input
       type="number"
+      class="input-required"
       value="${site.currentEnrollment || 0}"
       data-field="currentEnrollment"
       data-index="${index}" />
@@ -2493,7 +2526,78 @@ function mergeForecastMonths(currentMonths, scenarioMonths) {
 }
 
  
+function flashRunForecastButtons(success) {
+  document.querySelectorAll('[data-global-action="runForecast"], #runForecastTop, #runForecastSites').forEach(btn => {
+    btn.classList.remove('btn-running');
+    void btn.offsetWidth;
+    btn.classList.add('btn-running');
+    btn.textContent = success === false ? '⚠️ Fix Inputs' : '⏳ Running…';
+    setTimeout(() => {
+      btn.classList.remove('btn-running');
+      if (success !== false) {
+        btn.textContent = '✓ Done';
+        setTimeout(() => { btn.textContent = 'Run Forecast'; }, 1200);
+      } else {
+        btn.textContent = 'Run Forecast';
+      }
+    }, 600);
+  });
+}
+
+function validateForecastInputs() {
+  const issues = [];
+
+  // Clear previous error highlights
+  document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+
+  const targetEl = document.getElementById('targetEnrollmentKPI');
+  if (!targetEl || !targetEl.value || Number(targetEl.value) <= 0) {
+    issues.push('Target Enrollment must be greater than 0');
+    if (targetEl) targetEl.classList.add('input-error');
+  }
+
+  const fpsEl = document.getElementById('targetFpsDateKPI');
+  if (!fpsEl || !fpsEl.value.trim()) {
+    issues.push('Target FPS Date is required');
+    if (fpsEl) fpsEl.classList.add('input-error');
+  } else if (!parseDateInput(fpsEl.value.trim())) {
+    issues.push('Target FPS Date format is not recognized (try DD-Mon-YYYY or YYYY-MM-DD)');
+    fpsEl.classList.add('input-error');
+  }
+
+  const includedSites = studyInputs.sites.filter(s => s.include);
+  if (includedSites.length === 0) {
+    issues.push('At least one site must be included (check Site Information)');
+  } else {
+    const missingActivation = includedSites.filter(s => !s.activationDate);
+    if (missingActivation.length > 0) {
+      issues.push(`${missingActivation.length} included site(s) are missing an Activation Date`);
+    }
+  }
+
+  if (issues.length > 0) {
+    const list = document.getElementById('validationToastList');
+    const toast = document.getElementById('validationToast');
+    if (list && toast) {
+      list.innerHTML = issues.map(i => `<li>${i}</li>`).join('');
+      toast.classList.add('visible');
+    }
+    return false;
+  }
+
+  // Hide any previous toast
+  const toast = document.getElementById('validationToast');
+  if (toast) toast.classList.remove('visible');
+  return true;
+}
+
 function runForecast() {
+  if (!validateForecastInputs()) {
+    flashRunForecastButtons(false);
+    return;
+  }
+  flashRunForecastButtons(true);
+
   buildSiteRows();
 
   const target = getNumberValue('targetEnrollmentKPI', 0);
@@ -3245,6 +3349,34 @@ function setupNavHierarchy() {
   });
 }
 
+function setupGlobalActionButtons() {
+  document.querySelectorAll('[data-global-action]').forEach(button => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.globalAction;
+
+      if (action === 'save') {
+        saveStateToFile();
+        return;
+      }
+
+      if (action === 'load') {
+        const loadStateFileInput = document.getElementById('loadStateFile');
+        if (!loadStateFileInput) {
+          return;
+        }
+
+        loadStateFileInput.value = '';
+        loadStateFileInput.click();
+        return;
+      }
+
+      if (action === 'runForecast') {
+        runForecast();
+      }
+    });
+  });
+}
+
 function setupInputListeners() {
  const studyNameInput =
   document.getElementById('studyName');
@@ -3391,6 +3523,7 @@ function initializeCurrentStateAsOfDate() {
 setupNavigation();
 setupNavHierarchy();
 setupInputListeners();
+setupGlobalActionButtons();
 initializeCurrentStateAsOfDate();
 populateCountryDatalist();
 

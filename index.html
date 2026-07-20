@@ -62,6 +62,7 @@
             <button id="runForecastTop" class="primary">Run Forecast</button>
           </div>
         </div>
+        <p class="user-input-note">User Input Required for All Grey Cells</p>
 <label>
   Study Name
   <input
@@ -74,19 +75,19 @@
             <h3>Study Assumptions</h3>
             <label>
               Target Enrollment
-              <input id="targetEnrollmentKPI" type="number" value="" />
+              <input id="targetEnrollmentKPI" class="input-required" type="number" value="" />
             </label>
             <label>
               Screen Fail %
-              <input id="screenFailRateKPI" type="number" value="" />
+              <input id="screenFailRateKPI" class="input-required" type="number" value="" />
             </label>
             <label>
-              Screening Window
-              <input id="screeningWindowKPI" type="number" value="" />
+              Screening Window (Days)
+              <input id="screeningWindowKPI" class="input-required" type="number" value="" />
             </label>
             <label>
               Global Enrollment Rate
-              <input id="globalEnrollmentRateKPI" type="number" value="" />
+              <input id="globalEnrollmentRateKPI" class="input-required" type="number" value="" />
             </label>
             <label>
               Average Price Per Participant
@@ -98,7 +99,7 @@
             </label>
             <label>
               Target LPI Date
-              <input id="targetLpiKPI" type="text" value="" placeholder="DD-MMM-YYYY" />
+              <input id="targetLpiKPI" class="input-required" type="text" value="" placeholder="DD-MMM-YYYY" />
             </label>
           </div>
           <div class="kpi-card">
@@ -126,10 +127,15 @@
             <p class="eyebrow">Dashboard</p>
             <h2>Current State</h2>
           </div>
-          <label>
-            As of Date
-            <input id="currentStateAsOfDate" type="text" placeholder="DD-MMM-YYYY" />
-          </label>
+          <div class="header-actions">
+            <label>
+              As of Date
+              <input id="currentStateAsOfDate" type="text" placeholder="DD-MMM-YYYY" />
+            </label>
+            <button class="secondary" data-global-action="save">Save</button>
+            <button class="secondary" data-global-action="load">Load</button>
+            <button class="primary" data-global-action="runForecast">Run Forecast</button>
+          </div>
         </div>
 
         <div class="kpi-grid">
@@ -167,8 +173,14 @@
             <p class="eyebrow">Country Information</p>
             <h2>Country Assumptions</h2>
           </div>
-          <button id="addCountryAssumptionRow" class="primary">+ Add Country</button>
+          <div class="header-actions">
+            <button class="secondary" data-global-action="save">Save</button>
+            <button class="secondary" data-global-action="load">Load</button>
+            <button class="secondary" data-global-action="runForecast">Run Forecast</button>
+            <button id="addCountryAssumptionRow" class="primary">+ Add Country</button>
+          </div>
         </div>
+        <p class="user-input-note">User Input Required for All Grey Cells</p>
 
         <div class="panel">
           <div class="table-panel">
@@ -199,7 +211,12 @@
             <p class="eyebrow">Approval History</p>
             <h2>Historical Approval Defaults</h2>
           </div>
-          <button id="addHistoricalApprovalRow" class="primary">Add Country</button>
+          <div class="header-actions">
+            <button class="secondary" data-global-action="save">Save</button>
+            <button class="secondary" data-global-action="load">Load</button>
+            <button class="secondary" data-global-action="runForecast">Run Forecast</button>
+            <button id="addHistoricalApprovalRow" class="primary">Add Country</button>
+          </div>
         </div>
 
         <div class="panel">
@@ -223,6 +240,11 @@
             <p class="eyebrow">Site Setup</p>
             <h2>Site Activation Timeline</h2>
           </div>
+          <div class="header-actions">
+            <button class="secondary" data-global-action="save">Save</button>
+            <button class="secondary" data-global-action="load">Load</button>
+            <button class="primary" data-global-action="runForecast">Run Forecast</button>
+          </div>
         </div>
         <div class="panel">
           <h3>Timeline by Country</h3>
@@ -242,11 +264,15 @@
             <h2>Site Information</h2>
           </div>
           <div class="header-actions">
+            <button class="secondary" data-global-action="save">Save</button>
+            <button class="secondary" data-global-action="load">Load</button>
+            <button class="secondary" data-global-action="runForecast">Run Forecast</button>
             <button id="downloadSiteCsvTemplateBtn" class="secondary">Download Site CSV Template</button>
             <button id="exportSiteCsvBtn" class="secondary">Export Sites CSV</button>
             <button id="importSiteCsvBtn" class="secondary">Import Sites CSV</button>
           </div>
         </div>
+        <p class="user-input-note">User Input Required for All Grey Cells</p>
         <div class="table-panel">
           <table>
             <thead>
@@ -272,7 +298,11 @@
             <p class="eyebrow">Enrollment Curve</p>
             <h2>Enrollment Curve</h2>
           </div>
-          <button id="runForecastSites" class="primary">Run Forecast</button>
+          <div class="header-actions">
+            <button class="secondary" data-global-action="save">Save</button>
+            <button class="secondary" data-global-action="load">Load</button>
+            <button id="runForecastSites" class="primary">Run Forecast</button>
+          </div>
         </div>
 
         <div class="kpi-grid">
@@ -333,6 +363,11 @@
             <p class="eyebrow">Enrollment by Month</p>
             <h2>Monthly Forecast Detail</h2>
           </div>
+          <div class="header-actions">
+            <button class="secondary" data-global-action="save">Save</button>
+            <button class="secondary" data-global-action="load">Load</button>
+            <button class="primary" data-global-action="runForecast">Run Forecast</button>
+          </div>
         </div>
         <div class="panel">
           <div class="table-panel">
@@ -362,6 +397,11 @@
         Projected Enrollment by Country
       </h2>
     </div>
+    <div class="header-actions">
+      <button class="secondary" data-global-action="save">Save</button>
+      <button class="secondary" data-global-action="load">Load</button>
+      <button class="primary" data-global-action="runForecast">Run Forecast</button>
+    </div>
   </div>
 
   <div class="panel">
@@ -386,6 +426,11 @@
         Cumulative Active Sites Over Time
       </h2>
     </div>
+    <div class="header-actions">
+      <button class="secondary" data-global-action="save">Save</button>
+      <button class="secondary" data-global-action="load">Load</button>
+      <button class="primary" data-global-action="runForecast">Run Forecast</button>
+    </div>
   </div>
 
   <div class="panel">
@@ -406,6 +451,9 @@
       <h2>Scenario Engine</h2>
     </div>
     <div class="header-actions">
+      <button class="secondary" data-global-action="save">Save</button>
+      <button class="secondary" data-global-action="load">Load</button>
+      <button class="secondary" data-global-action="runForecast">Run Forecast</button>
       <button id="generateBestScenarioBtn" class="secondary">Generate Best Add-On</button>
       <button id="addScenarioBtn" class="primary">+ Add Scenario</button>
     </div>
@@ -421,6 +469,13 @@
 <datalist id="countryOptions"></datalist>
   <input id="loadStateFile" type="file" accept=".json,application/json" hidden />
   <input id="siteCsvFileInput" type="file" accept=".csv,text/csv" hidden />
+  <!-- Validation toast -->
+  <div id="validationToast">
+    <div class="toast-title">⚠️ Missing Required Inputs</div>
+    <ul id="validationToastList"></ul>
+    <button onclick="document.getElementById('validationToast').classList.remove('visible')">Dismiss</button>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
