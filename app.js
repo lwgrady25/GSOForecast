@@ -986,6 +986,40 @@ function calculateParticipantsWithScreenFail(participantsPerCountry) {
   return Math.round(participantsPerCountry * (1 - rate));
 }
 
+function formatWholeNumber(value) {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) {
+    return '0';
+  }
+  return Math.round(numericValue).toLocaleString('en-US');
+}
+
+function updateParticipantSummaryCards() {
+  const countryBeforeScreenFail = countryAssumptions.reduce((sum, country) => {
+    return sum + Number(country.participantsPerCountry || 0);
+  }, 0);
+  const countryAfterScreenFail = countryAssumptions.reduce((sum, country) => {
+    return sum + calculateParticipantsWithScreenFail(Number(country.participantsPerCountry || 0));
+  }, 0);
+
+  const siteAfterScreenFail = sites.reduce((sum, site) => {
+    return sum + Number(site.max || 0);
+  }, 0);
+  const screenFailRate = getScreenFailRatePercent() / 100;
+  const siteBeforeScreenFail = screenFailRate >= 1
+    ? 0
+    : siteAfterScreenFail / (1 - screenFailRate);
+
+  setTextIfExists('dashboardParticipantsBeforeScreenFail', formatWholeNumber(countryBeforeScreenFail));
+  setTextIfExists('dashboardParticipantsAfterScreenFail', formatWholeNumber(countryAfterScreenFail));
+
+  setTextIfExists('countryParticipantsBeforeScreenFail', formatWholeNumber(countryBeforeScreenFail));
+  setTextIfExists('countryParticipantsAfterScreenFail', formatWholeNumber(countryAfterScreenFail));
+
+  setTextIfExists('siteParticipantsBeforeScreenFail', formatWholeNumber(siteBeforeScreenFail));
+  setTextIfExists('siteParticipantsAfterScreenFail', formatWholeNumber(siteAfterScreenFail));
+}
+
 function getHistoricalApprovalDays(countryName) {
   if (!countryName) {
     return null;
@@ -1136,6 +1170,41 @@ function buildSiteRows() {
   return sites;
 }
 
+function resetSiteMaxParticipants() {
+  buildSiteRows();
+
+  const countriesByName = new Map(
+    countryAssumptions
+      .filter(country => toStringValue(country.country).trim())
+      .map(country => [toStringValue(country.country).trim(), country])
+  );
+
+  sites.forEach(site => {
+    const countryName = toStringValue(site.country).trim();
+    const countryItem = countriesByName.get(countryName);
+
+    if (!countryItem) {
+      return;
+    }
+
+    const siteCount = Math.max(0, Number(countryItem.siteCount || 0));
+    const siteNumber = Number(getSiteNumberFromSite(site));
+
+    if (!siteCount || !Number.isFinite(siteNumber) || siteNumber < 1 || siteNumber > siteCount) {
+      return;
+    }
+
+    site.max = calculateSiteMaxParticipants(
+      countryItem,
+      siteNumber - 1,
+      siteCount
+    );
+  });
+
+  renderSiteTable();
+  runForecast();
+}
+
 function refreshEstimatedApprovalCell(row, currentItem) {
   const derivedCell = row && row.querySelector('[data-derived="estimatedApproval"]');
 
@@ -1274,6 +1343,15 @@ function handleCountryAssumptionInputChange(event) {
   }
 
   currentItem[field] = value;
+
+  if (field === 'initialCountry' && value === false) {
+    const countryName = toStringValue(currentItem.country).trim();
+    sites.forEach(site => {
+      if (toStringValue(site.country).trim() === countryName) {
+        site.include = false;
+      }
+    });
+  }
 
   if (field === 'country') {
     const historicalDays = getHistoricalApprovalDays(value);
@@ -1422,6 +1500,7 @@ function renderCountryAssumptionsTable() {
   renderSiteActivationTimeline();
 
   renderScenarioList();
+  updateParticipantSummaryCards();
 }
 
 function addScenario() {
@@ -1869,6 +1948,8 @@ function renderSiteTable() {
     runForecast();
   });
 });
+
+  updateParticipantSummaryCards();
 }
 
 function roundEnrollment(value) {
@@ -1953,6 +2034,21 @@ function getSiteEnrollmentStartMonth(site) {
   );
 }
 
+function getTargetFpsMonthStart() {
+  const targetFpsDateValue = getTextValue('targetFpsDateKPI', '');
+  const parsedTargetFpsDate = parseDateInput(targetFpsDateValue);
+
+  if (!parsedTargetFpsDate) {
+    return null;
+  }
+
+  return new Date(
+    parsedTargetFpsDate.getFullYear(),
+    parsedTargetFpsDate.getMonth(),
+    1
+  );
+}
+
 function formatMonthForForecast(dateObject) {
   const year = dateObject.getFullYear();
   const month = String(dateObject.getMonth() + 1).padStart(2, '0');
@@ -1982,7 +2078,7 @@ function generateForecastMonths(
     return [];
   }
 
-  const firstForecastMonth =
+  const firstSiteForecastMonth =
     new Date(
       Math.min(
         ...siteStartDates.map(date =>
@@ -1990,6 +2086,12 @@ function generateForecastMonths(
         )
       )
     );
+
+  const targetFpsMonth = getTargetFpsMonthStart();
+  const firstForecastMonth =
+    targetFpsMonth && targetFpsMonth > firstSiteForecastMonth
+      ? targetFpsMonth
+      : firstSiteForecastMonth;
 
   const parsedTargetLpi =
     parseDateInput(targetLpiValue);
@@ -2010,6 +2112,10 @@ function generateForecastMonths(
 
   let currentMonth =
     new Date(firstForecastMonth);
+
+  if (currentMonth > lastForecastMonth) {
+    return forecastMonths;
+  }
 
   while (currentMonth <= lastForecastMonth) {
 
@@ -2595,10 +2701,14 @@ function validateForecastInputs(highlightErrors = true) {
 
 function runForecast(highlightErrors = true) {
   if (!validateForecastInputs(highlightErrors)) {
-    flashRunForecastButtons(false);
+    if (highlightErrors) {
+      flashRunForecastButtons(false);
+    }
     return;
   }
-  flashRunForecastButtons(true);
+  if (highlightErrors) {
+    flashRunForecastButtons(true);
+  }
 
   buildSiteRows();
 
@@ -3126,7 +3236,7 @@ function renderChart(forecast, target, scenarioForecasts = [], monthlyByCountry 
   const height = baseHeight + legendAreaHeight;
 
   const padding = {
-    top: 30,
+    top: 42,
     right: 40,
     bottom: 70,
     left: 70
@@ -3192,7 +3302,10 @@ function renderChart(forecast, target, scenarioForecasts = [], monthlyByCountry 
     if (monthly <= 0) return '';
 
     const barWidth = 24;
-    const x = getX(index) - barWidth / 2;
+    const x = Math.max(
+      padding.left + 2,
+      getX(index) - barWidth / 2
+    );
 
     if (!monthlyByCountry || !monthlyByCountry[index] || countries.length === 0) {
       const y = getMonthlyY(monthly);
@@ -3266,10 +3379,51 @@ function renderChart(forecast, target, scenarioForecasts = [], monthlyByCountry 
     `;
   }).join('');
 
-  // Scenario legend items in header row
-  const scenarioLegendItems = scenarioForecasts.map((sf, i) => {
-    const lx = padding.left + 560 + i * 160;
-    return `<text x="${lx}" y="18" font-size="12" fill="${sf.color}" font-weight="600">- - ${sf.name || 'Scenario ' + (i + 1)}</text>`;
+  const legendItems = [
+    { label: '■ Monthly Enrollment', className: 'chart-legend-bar' },
+    { label: '— Cumulative', className: 'chart-legend-line' },
+    ...scenarioForecasts.map((sf, i) => ({
+      label: `- - ${sf.name || 'Scenario ' + (i + 1)}`,
+      fill: sf.color
+    }))
+  ];
+
+  const legendItemPadding = 28;
+  const legendY = 16;
+  const plotLeft = padding.left;
+  const plotRight = width - padding.right;
+  const legendMeasurementCanvas = document.createElement('canvas');
+  const legendMeasurementContext = legendMeasurementCanvas.getContext('2d');
+  if (legendMeasurementContext) {
+    legendMeasurementContext.font = '600 12px Inter, sans-serif';
+  }
+  const legendTotalWidth = legendItems.reduce((sum, item) => {
+    const measuredWidth = legendMeasurementContext
+      ? legendMeasurementContext.measureText(item.label).width
+      : item.label.length * 7;
+    return sum + measuredWidth;
+  }, 0) + (legendItemPadding * Math.max(legendItems.length - 1, 0));
+
+  let legendX = Math.max(
+    plotLeft,
+    plotLeft + ((plotRight - plotLeft - legendTotalWidth) / 2)
+  );
+
+  const centeredLegendItems = legendItems.map((item, index) => {
+    const x = legendX;
+    const measuredWidth = legendMeasurementContext
+      ? legendMeasurementContext.measureText(item.label).width
+      : item.label.length * 7;
+    legendX += measuredWidth;
+    if (index < legendItems.length - 1) {
+      legendX += legendItemPadding;
+    }
+
+    if (item.className) {
+      return `<text x="${x}" y="${legendY}" class="${item.className}">${item.label}</text>`;
+    }
+
+    return `<text x="${x}" y="${legendY}" font-size="12" fill="${item.fill}" font-weight="600">${item.label}</text>`;
   }).join('');
 
   chart.innerHTML = `
@@ -3302,10 +3456,7 @@ function renderChart(forecast, target, scenarioForecasts = [], monthlyByCountry 
       ${monthlyLabels}
       ${xLabels}
 
-      <text x="${padding.left}" y="18" class="chart-title">Enrollment Curve</text>
-      <text x="${padding.left + 150}" y="18" class="chart-legend-bar">■ Monthly Enrollment</text>
-      <text x="${padding.left + 330}" y="18" class="chart-legend-line">— Cumulative</text>
-      ${scenarioLegendItems}
+      ${centeredLegendItems}
 
       ${countryLegend}
     </svg>
@@ -3533,6 +3684,11 @@ if (studyNameInput) {
   const exportSiteCsvBtn = document.getElementById('exportSiteCsvBtn');
   if (exportSiteCsvBtn) {
     exportSiteCsvBtn.addEventListener('click', exportSitesToCsv);
+  }
+
+  const resetSiteMaxBtn = document.getElementById('resetSiteMaxBtn');
+  if (resetSiteMaxBtn) {
+    resetSiteMaxBtn.addEventListener('click', resetSiteMaxParticipants);
   }
 }
 
