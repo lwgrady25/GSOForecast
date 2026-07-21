@@ -487,6 +487,7 @@ function getAppStateSnapshot() {
       siteErMode: toStringValue(item.siteErMode || 'Global'),
       er: toFiniteNumber(item.er, 0),
       max: toFiniteNumber(item.max, 0),
+      maxIsManual: Boolean(item.maxIsManual),
       currentEnrollment: toFiniteNumber(item.currentEnrollment, 0)
     })),
     scenarios: scenarios.map(item => ({
@@ -592,6 +593,7 @@ function normalizeSites(items) {
       siteErMode: toStringValue(item.siteErMode || 'Global'),
       er: toFiniteNumber(item.er, 0),
       max: toFiniteNumber(item.max, 0),
+      maxIsManual: Boolean(item.maxIsManual),
       currentEnrollment: toFiniteNumber(item.currentEnrollment, 0)
     }));
 }
@@ -938,6 +940,7 @@ function importSitesFromCsvText(csvText) {
     );
     if (maxValue !== null) {
       targetSite.max = maxValue;
+      targetSite.maxIsManual = true;
     }
 
     const currentEnrollmentValue = parseImportNumber(
@@ -1109,7 +1112,7 @@ function buildSiteRows() {
       }
 
       const derivedMaxValue =
-        previousSite && previousSite.max !== undefined
+        previousSite && previousSite.max !== undefined && previousSite.maxIsManual
           ? toFiniteNumber(previousSite.max, 0)
           : calculateSiteMaxParticipants(
               country,
@@ -1126,6 +1129,7 @@ function buildSiteRows() {
         siteErMode: currentErMode,
         er: derivedErValue,
         max: derivedMaxValue,
+        maxIsManual: Boolean(previousSite?.maxIsManual),
         currentEnrollment:
           previousSite?.currentEnrollment || 0
       });
@@ -1856,6 +1860,9 @@ function renderSiteTable() {
       }
     } else if (field === 'max' || field === 'currentEnrollment') {
       sites[index][field] = Number(event.target.value);
+      if (field === 'max') {
+        sites[index].maxIsManual = true;
+      }
     } else if (field === 'activation') {
       sites[index][field] = normalizeDateInputValue(event.target.value);
     } else {
