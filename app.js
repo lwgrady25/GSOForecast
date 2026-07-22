@@ -1962,58 +1962,126 @@ return String(rounded);
 }
 return rounded.toFixed(1);
 }
-function calculateMonthlySiteEnrollment(site, monthValue, enrolledAtSite) {
-  const activation = parseDateInput(site.activation);
 
-  if (!activation) {
+function getMonthlyEnrollmentTarget(activeSiteStates) {
+  const totalEnrollmentRate = activeSiteStates.reduce((sum, siteState) => {
+    return sum + Number(siteState.er || 0);
+  }, 0);
+
+  if (totalEnrollmentRate <= 0) {
     return 0;
   }
 
-  const siteMax = Number(site.max || 0);
-  const monthlyRate = Number(site.er || 0);
-
-  if (siteMax <= 0) {
-    return 0;
+  if (totalEnrollmentRate < 1) {
+    return 1;
   }
 
-  const screeningWindow = getNumberValue(
-  'screeningWindowKPI',
-  0
-);
-
-  const activationPlusScreening = addDays(
-    activation,
-    screeningWindow
-  );
-
-  const startMonth = new Date(
-    activationPlusScreening.getFullYear(),
-    activationPlusScreening.getMonth(),
-    1
-  );
-
-  const monthDate = new Date(monthValue + 'T00:00:00');
-
-  const remaining = Math.max(
-    0,
-    siteMax - enrolledAtSite
-  );
-
-  if (monthDate < startMonth || remaining <= 0) {
-    return 0;
-  }
-
-  const calculatedEnrollment = Math.round(
-    remaining * monthlyRate
-  );
-
-  const monthlyEnrollment = Math.min(
-    remaining,
-    Math.max(1, calculatedEnrollment)
-  );
-
-  return monthlyEnrollment;
+  return Math.round(totalEnrollmentRate);
 }
+
+function isSiteActiveForMonth(siteState, monthDate) {
+  return (
+    siteState.startMonth &&
+    siteState.startMonth <= monthDate &&
+    siteState.enrolled < siteState.max
+  );
+}
+
+function distributeMonthlyEnrollment(siteStates, monthDate, monthlyTarget, startCursor) {
+  const breakdown = {};
+  let remainingToAssign = Math.max(0, Number(monthlyTarget || 0));
+  if (siteStates.length === 0) {
+    return {
+      breakdown,
+      nextCursor: 0
+    };
+  }
+
+  let cursor = Math.max(0, Number(startCursor || 0)) % siteStates.length;
+  let safetyCounter = 0;
+  const safetyLimit = Math.max(siteStates.length * Math.max(remainingToAssign, 1) * 4, 200);
+
+  while (remainingToAssign > 0 && safetyCounter < safetyLimit) {
+    const siteState = siteStates[cursor];
+    cursor = (cursor + 1) % siteStates.length;
+    safetyCounter += 1;
+
+    if (!isSiteActiveForMonth(siteState, monthDate)) {
+      continue;
+    }
+
+    siteState.enrolled += 1;
+    remainingToAssign -= 1;
+    breakdown[siteState.country] = (breakdown[siteState.country] || 0) + 1;
+  }
+
+  return {
+    breakdown,
+    nextCursor: cursor
+  };
+}
+
+function buildEnrollmentSimulation(siteList, forecastMonths) {
+  const includedSites = siteList.filter(site => site.include);
+  const siteStates = includedSites.map((site, index) => ({
+    siteId: toStringValue(site.siteKey).trim() || `${toStringValue(site.country)}|${toStringValue(site.site)}|${index}`,
+    country: toStringValue(site.country),
+    er: Number(site.er || 0),
+    max: Number(site.max || 0),
+    enrolled: Number(site.currentEnrollment || 0),
+    initialEnrollment: Number(site.currentEnrollment || 0),
+    startMonth: getSiteEnrollmentStartMonth(site)
+  }));
+
+  const monthlyTotals = [];
+  const monthlyByCountry = [];
+  let assignmentCursor = 0;
+
+  forecastMonths.forEach(month => {
+    const monthDate = new Date(`${month}T00:00:00`);
+    const activeSiteStates = siteStates.filter(siteState => {
+      return isSiteActiveForMonth(siteState, monthDate);
+    });
+
+    const monthlyTarget = getMonthlyEnrollmentTarget(activeSiteStates);
+    const totalRemainingCapacity = activeSiteStates.reduce((sum, siteState) => {
+      return sum + Math.max(0, siteState.max - siteState.enrolled);
+    }, 0);
+    const cappedMonthlyTarget = Math.min(monthlyTarget, totalRemainingCapacity);
+    const distributionResult = distributeMonthlyEnrollment(
+      siteStates,
+      monthDate,
+      cappedMonthlyTarget,
+      assignmentCursor
+    );
+    const breakdown = distributionResult.breakdown;
+    assignmentCursor = distributionResult.nextCursor;
+
+    const monthlyTotal = Object.values(breakdown).reduce((sum, value) => {
+      return sum + Number(value || 0);
+    }, 0);
+
+    monthlyTotals.push(monthlyTotal);
+    monthlyByCountry.push({ month, breakdown });
+  });
+
+  const countryTotals = {};
+  siteStates.forEach(siteState => {
+    countryTotals[siteState.country] = (countryTotals[siteState.country] || 0) + Number(siteState.enrolled || 0);
+  });
+
+  const initialCumulative = siteStates.reduce((sum, siteState) => {
+    return sum + Number(siteState.initialEnrollment || 0);
+  }, 0);
+
+  return {
+    monthlyTotals,
+    monthlyByCountry,
+    countryTotals,
+    initialCumulative
+  };
+}
+
 function getSiteEnrollmentStartMonth(site) {
   const activation = parseDateInput(site.activation);
 
@@ -2136,38 +2204,9 @@ function generateForecastMonths(
 }
 
 function calculateCountryContributions(forecastMonths) {
-  const countryTotals = {};
+  const simulation = buildEnrollmentSimulation(sites, forecastMonths);
 
-  const includedSites =
-    sites.filter(site => site.include);
-
-  includedSites.forEach(site => {
-    let enrolledAtSite =
-      Number(site.currentEnrollment || 0);
-
-    let siteTotal =
-      Number(site.currentEnrollment || 0);
-
-    forecastMonths.forEach(month => {
-      const monthlyIncrement =
-        calculateMonthlySiteEnrollment(
-          site,
-          month,
-          enrolledAtSite
-        );
-
-      enrolledAtSite += monthlyIncrement;
-      siteTotal += monthlyIncrement;
-    });
-
-    if (!countryTotals[site.country]) {
-      countryTotals[site.country] = 0;
-    }
-
-    countryTotals[site.country] += siteTotal;
-  });
-
-  return Object.entries(countryTotals)
+  return Object.entries(simulation.countryTotals)
     .map(([country, total]) => ({
       country,
       total: roundEnrollment(total)
@@ -2581,6 +2620,7 @@ function buildScenarioSitesForScenario(scenario) {
   return scenarioSites;
 }
 function calculateForecastForSites(siteList, forecastMonths, target) {
+  const simulation = buildEnrollmentSimulation(siteList, forecastMonths);
   const forecast = forecastMonths.map(month => ({
     month,
     monthly: 0,
@@ -2588,26 +2628,11 @@ function calculateForecastForSites(siteList, forecastMonths, target) {
     remaining: target
   }));
 
-  const includedSiteList = siteList.filter(site => site.include);
-
-  includedSiteList.forEach(site => {
-    let enrolledAtSite = Number(site.currentEnrollment || 0);
-
-    forecast.forEach(row => {
-      const monthlyIncrement = calculateMonthlySiteEnrollment(
-        site,
-        row.month,
-        enrolledAtSite
-      );
-
-      enrolledAtSite += monthlyIncrement;
-      row.monthly += monthlyIncrement;
-    });
+  forecast.forEach((row, index) => {
+    row.monthly = Number(simulation.monthlyTotals[index] || 0);
   });
 
-  let cumulative = includedSiteList.reduce((sum, site) => {
-    return sum + Number(site.currentEnrollment || 0);
-  }, 0);
+  let cumulative = simulation.initialCumulative;
 
   forecast.forEach(row => {
     cumulative += row.monthly;
@@ -3189,24 +3214,8 @@ function renderCurrentStateSummary({ forecast, target, lpiRow, parsedTargetLpiDa
 }
 
 function calculateMonthlyByCountry(includedSites, forecastMonths) {
-  const siteEnrolled = {};
-  includedSites.forEach(site => {
-    const siteKey = site.siteKey || `${site.country}|${site.site}`;
-    siteEnrolled[siteKey] = Number(site.currentEnrollment || 0);
-  });
-
-  return forecastMonths.map(month => {
-    const breakdown = {};
-    includedSites.forEach(site => {
-      const siteKey = site.siteKey || `${site.country}|${site.site}`;
-      const increment = calculateMonthlySiteEnrollment(site, month, siteEnrolled[siteKey]);
-      siteEnrolled[siteKey] += increment;
-      if (increment > 0) {
-        breakdown[site.country] = (breakdown[site.country] || 0) + increment;
-      }
-    });
-    return { month, breakdown };
-  });
+  const simulation = buildEnrollmentSimulation(includedSites, forecastMonths);
+  return simulation.monthlyByCountry;
 }
 
 function renderChart(forecast, target, scenarioForecasts = [], monthlyByCountry = null) {
