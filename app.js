@@ -1120,12 +1120,9 @@ function buildSiteRows() {
           )
         : null;
 
-      const derivedActivationValue =
-        previousSite && previousSite.activation
-          ? previousSite.activation
-          : activationDate
-            ? formatDateForInput(activationDate)
-            : '';
+      const derivedActivationValue = activationDate
+        ? formatDateForInput(activationDate)
+        : '';
 
       const currentErMode =
         previousSite?.siteErMode || 'Global';
@@ -1463,6 +1460,7 @@ function renderCountryAssumptionsTable() {
     const participantsWithScreenFail = calculateParticipantsWithScreenFail(country.participantsPerCountry || 0);
     const estimatedApproval = calculateEstimatedApprovalDate(country.submissionDate, effectiveApprovalDays);
     const targetSubmissionDateForFps = calculateTargetSubmissionDateForFps(country);
+    const hasApprovalHistory = getHistoricalApprovalDays(country.country) !== null;
 
     row.innerHTML = `
     <td>
@@ -1486,8 +1484,8 @@ function renderCountryAssumptionsTable() {
     <td><input class="input-required" type="number" step="1" value="${country.siteCount}" data-field="siteCount" data-index="${index}" /></td>
     <td><input class="input-required" type="number" step="1" value="${country.averageTimeToActivateSite || ''}" data-field="averageTimeToActivateSite" data-index="${index}" /></td>
     <td><input class="input-required" type="text" value="${country.submissionDate ? formatDateForDisplay(country.submissionDate) : ''}" placeholder="DD-MMM-YYYY" data-field="submissionDate" data-index="${index}" /></td>
-      <td data-derived="estimatedApproval">${estimatedApproval ? formatDate(estimatedApproval) : ''}</td>
-      <td data-derived="targetSubmissionDateForFps">${targetSubmissionDateForFps ? formatDate(targetSubmissionDateForFps) : ''}</td>
+    <td data-derived="estimatedApproval" ${!hasApprovalHistory ? 'class="cell-warning" title="No approval history — enter an estimate"' : ''}>${estimatedApproval ? formatDate(estimatedApproval) : ''}</td>
+    <td data-derived="targetSubmissionDateForFps">${targetSubmissionDateForFps ? formatDate(targetSubmissionDateForFps) : ''}</td>
     `;
     body.appendChild(row);
   });
@@ -1847,7 +1845,9 @@ function renderSiteTable() {
       value="${site.activation ? formatDateForDisplay(site.activation) : ''}"
       placeholder="DD-MMM-YYYY"
       data-field="activation"
-      data-index="${index}" />
+      data-index="${index}"
+      readonly
+      style="background:#f8fafc;color:#667085;" />
   </td>
 
   <td>
@@ -1935,8 +1935,6 @@ function renderSiteTable() {
       }
     } else if (field === 'max' || field === 'currentEnrollment') {
       sites[index][field] = Number(event.target.value);
-    } else if (field === 'activation') {
-      sites[index][field] = normalizeDateInputValue(event.target.value);
     } else {
       sites[index][field] = event.target.value;
     }
@@ -2656,6 +2654,23 @@ function mergeForecastMonths(currentMonths, scenarioMonths) {
   ).sort();
 }
 
+// Extends the simulation beyond the chart window to find the projected LPI date
+// even when the target isn't reached within the visible forecast period.
+function projectLpiDate(includedSites, target, forecastMonths) {
+  if (forecastMonths.length === 0 || !target) return null;
+
+  const lastMonth = new Date(forecastMonths[forecastMonths.length - 1] + 'T00:00:00');
+  const extendedMonths = [...forecastMonths];
+
+  for (let i = 1; i <= 60; i++) {
+    extendedMonths.push(formatMonthForForecast(addForecastMonths(lastMonth, i)));
+  }
+
+  const extendedForecast = calculateForecastForSites(includedSites, extendedMonths, target);
+  const lpiRow = extendedForecast.find(row => row.cumulative >= target);
+  return lpiRow ? lpiRow.month : null;
+}
+
  
 function flashRunForecastButtons(success) {
   document.querySelectorAll('[data-global-action="runForecast"], #runForecastTop, #runForecastSites').forEach(btn => {
@@ -2845,14 +2860,19 @@ if (forecast.length === 0) {
   const activeSites = sites.filter(site => site.include).length;
   const projected = forecast[forecast.length - 1].cumulative;
 
+  // If target isn't reached within the chart window, extend simulation to find projected date
+  const projectedLpiMonth = lpiRow
+    ? lpiRow.month
+    : (includedSites.length > 0 ? projectLpiDate(includedSites, target, forecastMonths) : null);
+
   let status;
-  if (!lpiRow) {
+  if (!projectedLpiMonth) {
     status = 'Target Not Met';
   } else if (!parsedTargetLpiDate) {
     status = 'On Track';
   } else {
-    const forecastLpiDate = new Date(lpiRow.month + 'T00:00:00');
-    const diff = monthDiff(forecastLpiDate, parsedTargetLpiDate);
+    const projectedDate = new Date(projectedLpiMonth + 'T00:00:00');
+    const diff = monthDiff(projectedDate, parsedTargetLpiDate);
     if (diff > 0) {
       status = `On Track (${diff} month${diff === 1 ? '' : 's'} ahead)`;
     } else if (diff < 0) {
@@ -2866,7 +2886,7 @@ if (forecast.length === 0) {
   setTextIfExists('kpiTarget', target);
   setTextIfExists('kpiProjected', formatEnrollment(projected));
   setTextIfExists('kpiTargetLpi', parsedTargetLpiDate ? formatDate(parsedTargetLpiDate) : '--');
-  setTextIfExists('kpiForecastLpi', lpiRow ? formatDate(lpiRow.month) : 'Target Not Met');
+  setTextIfExists('kpiForecastLpi', projectedLpiMonth ? formatDate(projectedLpiMonth) : 'Target Not Met');
   setTextIfExists('kpiActiveSites', activeSites);
 
   const statusElement = document.getElementById('kpiStatus');
@@ -2882,7 +2902,14 @@ if (forecast.length === 0) {
 renderForecastTable(forecast, target);
 
 const monthlyByCountry = calculateMonthlyByCountry(includedSites, forecastMonths);
-renderChart(forecast, target, allScenarioForecasts, monthlyByCountry);
+const countryColorToggle = document.getElementById('countryColorToggle');
+const showCountryColors = !countryColorToggle || countryColorToggle.checked;
+renderChart(
+  forecast,
+  target,
+  allScenarioForecasts,
+  showCountryColors ? monthlyByCountry : null
+);
 
 const countryContributions = calculateCountryContributions(forecastMonths);
 renderCountryContributionChart(countryContributions);
@@ -2895,17 +2922,17 @@ const activationCurveSites =
 const siteActivationCurve = calculateSiteActivationCurve(activationCurveSites, targetLpi);
 renderSiteActivationCurveChart(siteActivationCurve);
 
-renderScenarioComparisonTable(includedSites, forecast, allScenarioSitesList, allScenarioForecasts, target);
+renderScenarioComparisonTable(includedSites, forecast, allScenarioSitesList, allScenarioForecasts, target, forecastMonths);
 renderCurrentStateSummary({
   forecast,
   target,
-  lpiRow,
+  lpiRow: projectedLpiMonth ? { month: projectedLpiMonth } : null,
   parsedTargetLpiDate,
   includedSites
 });
 }
 
-function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioSitesList, allScenarioForecasts, target) {
+function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioSitesList, allScenarioForecasts, target, forecastMonths) {
   const panel = document.getElementById('scenarioComparisonPanel');
   const body = document.getElementById('scenarioComparisonBody');
   if (!panel || !body) return;
@@ -2929,20 +2956,26 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
     };
   }
 
-  function findLpiRow(forecastRows) {
-    return forecastRows.find(row => row.cumulative >= target) || null;
+  function findLpiMonth(forecastRows, siteList) {
+    const row = forecastRows.find(r => r.cumulative >= target);
+    if (row) return row.month;
+    // Extend simulation if not reached within chart window
+    if (siteList && forecastMonths && forecastMonths.length > 0) {
+      return projectLpiDate(siteList, target, forecastMonths);
+    }
+    return null;
   }
 
   const baseSummary = summariseSites(includedSites);
-  const baseLpiRow = findLpiRow(baseForecast);
-  const baseLpiDate = baseLpiRow ? new Date(baseLpiRow.month + 'T00:00:00') : null;
+  const baseLpiMonth = findLpiMonth(baseForecast, includedSites);
+  const baseLpiDate = baseLpiMonth ? new Date(baseLpiMonth + 'T00:00:00') : null;
 
-  function diffLabel(scenarioLpiRow) {
-    if (!baseLpiRow && !scenarioLpiRow) return { text: '—', cls: '' };
-    if (!baseLpiRow) return { text: 'Base misses target', cls: 'status-good' };
-    if (!scenarioLpiRow) return { text: 'Misses target', cls: 'status-risk' };
+  function diffLabel(scenarioLpiMonth) {
+    if (!baseLpiMonth && !scenarioLpiMonth) return { text: '—', cls: '' };
+    if (!baseLpiMonth) return { text: 'Base misses target', cls: 'status-good' };
+    if (!scenarioLpiMonth) return { text: 'Misses target', cls: 'status-risk' };
 
-    const scenarioDate = new Date(scenarioLpiRow.month + 'T00:00:00');
+    const scenarioDate = new Date(scenarioLpiMonth + 'T00:00:00');
     const diff = monthDiff(scenarioDate, baseLpiDate); // positive = scenario is earlier (better)
 
     if (diff === 0) return { text: 'Same as base', cls: '' };
@@ -2960,7 +2993,7 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
       <td>${baseSummary.countryCount}</td>
       <td>${baseSummary.siteCount}</td>
       <td>${baseSummary.totalParticipants.toLocaleString()}</td>
-      <td>${baseLpiRow ? formatDate(baseLpiRow.month) : '<span class="status-risk">Target not met</span>'}</td>
+      <td>${baseLpiMonth ? formatDate(baseLpiMonth) : '<span class="status-risk">Target not met</span>'}</td>
       <td>—</td>
     </tr>
   `);
@@ -2969,8 +3002,8 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
   allScenarioForecasts.forEach((sf, i) => {
     const scenarioSites = allScenarioSitesList[i] || [];
     const summary = summariseSites(scenarioSites);
-    const lpiRow = findLpiRow(sf.forecast);
-    const diff = diffLabel(lpiRow);
+    const lpiMonth = findLpiMonth(sf.forecast, scenarioSites);
+    const diff = diffLabel(lpiMonth);
 
     const colorDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sf.color};margin-right:6px;"></span>`;
 
@@ -2980,7 +3013,7 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
         <td>${summary.countryCount}</td>
         <td>${summary.siteCount}</td>
         <td>${summary.totalParticipants.toLocaleString()}</td>
-        <td>${lpiRow ? formatDate(lpiRow.month) : '<span class="status-risk">Target not met</span>'}</td>
+        <td>${lpiMonth ? formatDate(lpiMonth) : '<span class="status-risk">Target not met</span>'}</td>
         <td class="${diff.cls}">${diff.text}</td>
       </tr>
     `);
@@ -3608,6 +3641,13 @@ if (studyNameInput) {
 
   if (runForecastSites) {
     runForecastSites.addEventListener('click', runForecast);
+  }
+
+  const countryColorToggle = document.getElementById('countryColorToggle');
+  if (countryColorToggle) {
+    countryColorToggle.addEventListener('change', () => {
+      runForecast(false);
+    });
   }
 
   const addCountryButton = document.getElementById('addCountryAssumptionRow');

@@ -213,10 +213,10 @@
                   <th>Participants</th>
                   <th>w/ Screen Fail</th>
                   <th>Sites</th>
-                  <th>Avg Site Activation<br/>Days</th>
+                  <th>Avg Days Between<br/>Site Activation</th>
                   <th>Submission<br/>Date</th>
                   <th>Est. Approval</th>
-                  <th>Target Sub.<br/>for FPS</th>
+                  <th>Target Sub.<br/>Date for FPS</th>
                 </tr>
               </thead>
               <tbody id="countryAssumptionsTable"></tbody>
@@ -338,11 +338,11 @@
 
         <div class="kpi-grid">
           <div class="kpi-card">
-            <span>Target</span>
+            <span>Target Enrollment</span>
             <strong id="kpiTarget">0</strong>
           </div>
           <div class="kpi-card">
-            <span>Projected</span>
+            <span>Projected Participants by Target LPI Date</span>
             <strong id="kpiProjected">0</strong>
           </div>
           <div class="kpi-card">
@@ -354,7 +354,7 @@
             <strong id="kpiForecastLpi">--</strong>
           </div>
           <div class="kpi-card">
-            <span>Active Sites</span>
+            <span>Active Sites by Target LPI Date</span>
             <strong id="kpiActiveSites">0</strong>
           </div>
           <div class="kpi-card">
@@ -364,7 +364,13 @@
         </div>
 
         <div class="panel forecast-chart-panel">
-          <h3>Forecast Chart</h3>
+          <div class="chart-panel-header">
+            <h3>Forecast Chart</h3>
+            <label class="header-toggle">
+              <input id="countryColorToggle" type="checkbox" checked />
+              Country Colors
+            </label>
+          </div>
           <div id="chart" class="chart"></div>
         </div>
 
