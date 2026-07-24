@@ -72,16 +72,6 @@
 </label>
         <div class="kpi-grid">
           <div class="kpi-card">
-            <span>Total Participants (Before Screen Fail)</span>
-            <strong id="dashboardParticipantsBeforeScreenFail">0</strong>
-          </div>
-          <div class="kpi-card">
-            <span>Total Participants (After Screen Fail)</span>
-            <strong id="dashboardParticipantsAfterScreenFail">0</strong>
-          </div>
-        </div>
-        <div class="kpi-grid">
-          <div class="kpi-card">
             <h3>Study Assumptions</h3>
             <label>
               Target Enrollment
@@ -105,7 +95,7 @@
             </label>
             <label>
               Target FPS Date
-              <input id="targetFpsDateKPI" type="text" value="" placeholder="DD-MMM-YYYY" />
+              <input id="targetFpsDateKPI" class="input-required" type="text" value="" placeholder="DD-MMM-YYYY" />
             </label>
             <label>
               Target LPI Date
@@ -191,14 +181,22 @@
           </div>
         </div>
         <p class="user-input-note">User Input Required for All Grey Cells</p>
-        <div class="kpi-grid">
+        <div class="kpi-grid country-participant-kpi-grid">
           <div class="kpi-card">
-            <span>Total Participants (Before Screen Fail)</span>
+            <span>Total Participants (Before Screen Fail - Included Countries)</span>
             <strong id="countryParticipantsBeforeScreenFail">0</strong>
           </div>
           <div class="kpi-card">
-            <span>Total Participants (After Screen Fail)</span>
+            <span>Total Participants (After Screen Fail - Included Countries)</span>
             <strong id="countryParticipantsAfterScreenFail">0</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Total Participants (Before Screen Fail - All Countries)</span>
+            <strong id="countryParticipantsBeforeScreenFailAll">0</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Total Participants (After Screen Fail - All Countries)</span>
+            <strong id="countryParticipantsAfterScreenFailAll">0</strong>
           </div>
         </div>
 
@@ -213,10 +211,10 @@
                   <th>Participants</th>
                   <th>w/ Screen Fail</th>
                   <th>Sites</th>
-                  <th>Avg Site Activation<br/>Days</th>
+                  <th>Avg Days Between<br/>Site Activation</th>
                   <th>Submission<br/>Date</th>
                   <th>Est. Approval</th>
-                  <th>Target Sub.<br/>for FPS</th>
+                  <th>Target Sub.<br/>Date for FPS</th>
                 </tr>
               </thead>
               <tbody id="countryAssumptionsTable"></tbody>
@@ -294,14 +292,22 @@
           </div>
         </div>
         <p class="user-input-note">User Input Required for All Grey Cells</p>
-        <div class="kpi-grid">
+        <div class="kpi-grid country-participant-kpi-grid">
           <div class="kpi-card">
-            <span>Total Participants (Before Screen Fail)</span>
+            <span>Total Participants (Before Screen Fail - Included Countries)</span>
             <strong id="siteParticipantsBeforeScreenFail">0</strong>
           </div>
           <div class="kpi-card">
-            <span>Total Participants (After Screen Fail)</span>
+            <span>Total Participants (After Screen Fail - Included Countries)</span>
             <strong id="siteParticipantsAfterScreenFail">0</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Total Participants (Before Screen Fail - All Countries)</span>
+            <strong id="siteParticipantsBeforeScreenFailAll">0</strong>
+          </div>
+          <div class="kpi-card">
+            <span>Total Participants (After Screen Fail - All Countries)</span>
+            <strong id="siteParticipantsAfterScreenFailAll">0</strong>
           </div>
         </div>
         <div class="table-panel">
@@ -338,11 +344,11 @@
 
         <div class="kpi-grid">
           <div class="kpi-card">
-            <span>Target</span>
+            <span>Target Enrollment</span>
             <strong id="kpiTarget">0</strong>
           </div>
           <div class="kpi-card">
-            <span>Projected</span>
+            <span>Projected Participants by Target LPI Date</span>
             <strong id="kpiProjected">0</strong>
           </div>
           <div class="kpi-card">
@@ -354,7 +360,7 @@
             <strong id="kpiForecastLpi">--</strong>
           </div>
           <div class="kpi-card">
-            <span>Active Sites</span>
+            <span>Active Sites by Target LPI Date</span>
             <strong id="kpiActiveSites">0</strong>
           </div>
           <div class="kpi-card">
@@ -364,7 +370,13 @@
         </div>
 
         <div class="panel forecast-chart-panel">
-          <h3>Forecast Chart</h3>
+          <div class="chart-panel-header">
+            <h3>Forecast Chart</h3>
+            <label class="header-toggle">
+              <input id="countryColorToggle" type="checkbox" checked />
+              Country Colors
+            </label>
+          </div>
           <div id="chart" class="chart"></div>
         </div>
 
@@ -415,6 +427,16 @@
             </table>
           </div>
         </div>
+
+        <div class="panel" id="enrollmentScenarioComparisonPanel" style="margin-top:20px; display:none;">
+          <h3>Scenario vs Baseline (Cumulative by Month)</h3>
+          <div class="table-panel">
+            <table>
+              <thead id="enrollmentScenarioComparisonHead"></thead>
+              <tbody id="enrollmentScenarioComparisonBody"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
       <section id="countryContribution" class="view">
 
@@ -441,6 +463,16 @@
     <div
       id="countryContributionChart"
       class="country-chart">
+    </div>
+  </div>
+
+  <div class="panel" id="countryContributionComparisonPanel" style="margin-top:20px; display:none;">
+    <h3>Scenario vs Baseline Country Contribution</h3>
+    <div class="table-panel">
+      <table>
+        <thead id="countryContributionComparisonHead"></thead>
+        <tbody id="countryContributionComparisonBody"></tbody>
+      </table>
     </div>
   </div>
 

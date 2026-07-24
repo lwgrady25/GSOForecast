@@ -496,8 +496,13 @@ function getAppStateSnapshot() {
       screenFailRate: toFiniteNumber(item.screenFailRate, 0),
       enrollmentRate: toFiniteNumber(item.enrollmentRate, 0),
       activationTimingAdjustment: toFiniteNumber(item.activationTimingAdjustment, 0),
+      siteIncreasePerCountry: toFiniteNumber(item.siteIncreasePerCountry, 0),
+      maxParticipantIncreasePerCountry: toFiniteNumber(item.maxParticipantIncreasePerCountry, 0),
       selectedCountries: Array.isArray(item.selectedCountries)
         ? item.selectedCountries.map(value => toStringValue(value))
+        : [],
+      adjustmentCountries: Array.isArray(item.adjustmentCountries)
+        ? item.adjustmentCountries.map(value => toStringValue(value))
         : []
     })),
     nextScenarioId: toFiniteNumber(nextScenarioId, 1)
@@ -606,8 +611,13 @@ function normalizeScenarios(items) {
       screenFailRate: toFiniteNumber(item.screenFailRate, 0),
       enrollmentRate: toFiniteNumber(item.enrollmentRate, 0),
       activationTimingAdjustment: toFiniteNumber(item.activationTimingAdjustment, 0),
+      siteIncreasePerCountry: toFiniteNumber(item.siteIncreasePerCountry, 0),
+      maxParticipantIncreasePerCountry: toFiniteNumber(item.maxParticipantIncreasePerCountry, 0),
       selectedCountries: Array.isArray(item.selectedCountries)
         ? item.selectedCountries.map(value => toStringValue(value))
+        : [],
+      adjustmentCountries: Array.isArray(item.adjustmentCountries)
+        ? item.adjustmentCountries.map(value => toStringValue(value))
         : []
     }))
     .filter(item => item.id > 0);
@@ -994,18 +1004,58 @@ function formatWholeNumber(value) {
   return Math.round(numericValue).toLocaleString('en-US');
 }
 
+function setRiskClassIfBelowTarget(id, value, target) {
+  const element = document.getElementById(id);
+  if (!element) {
+    return;
+  }
+
+  const isRisk = Number(target) > 0 && Number(value) < Number(target);
+  element.classList.toggle('status-risk', isRisk);
+}
+
 function updateParticipantSummaryCards() {
+  const includedCountrySet = new Set(
+    sites
+      .filter(site => site.include)
+      .map(site => toStringValue(site.country).trim())
+      .filter(country => country)
+  );
+
+  const countryBeforeScreenFailAll = countryAssumptions.reduce((sum, country) => {
+    return sum + Number(country.participantsPerCountry || 0);
+  }, 0);
+  const countryAfterScreenFailAll = countryAssumptions.reduce((sum, country) => {
+    return sum + calculateParticipantsWithScreenFail(Number(country.participantsPerCountry || 0));
+  }, 0);
   const countryBeforeScreenFail = countryAssumptions.reduce((sum, country) => {
+    const countryName = toStringValue(country.country).trim();
+    if (!countryName || !includedCountrySet.has(countryName)) {
+      return sum;
+    }
     return sum + Number(country.participantsPerCountry || 0);
   }, 0);
   const countryAfterScreenFail = countryAssumptions.reduce((sum, country) => {
+    const countryName = toStringValue(country.country).trim();
+    if (!countryName || !includedCountrySet.has(countryName)) {
+      return sum;
+    }
     return sum + calculateParticipantsWithScreenFail(Number(country.participantsPerCountry || 0));
   }, 0);
 
+  const siteAfterScreenFailAll = sites.reduce((sum, site) => {
+    return sum + Number(site.max || 0);
+  }, 0);
   const siteAfterScreenFail = sites.reduce((sum, site) => {
+    if (!site.include) {
+      return sum;
+    }
     return sum + Number(site.max || 0);
   }, 0);
   const screenFailRate = getScreenFailRatePercent() / 100;
+  const siteBeforeScreenFailAll = screenFailRate >= 1
+    ? 0
+    : siteAfterScreenFailAll / (1 - screenFailRate);
   const siteBeforeScreenFail = screenFailRate >= 1
     ? 0
     : siteAfterScreenFail / (1 - screenFailRate);
@@ -1015,9 +1065,21 @@ function updateParticipantSummaryCards() {
 
   setTextIfExists('countryParticipantsBeforeScreenFail', formatWholeNumber(countryBeforeScreenFail));
   setTextIfExists('countryParticipantsAfterScreenFail', formatWholeNumber(countryAfterScreenFail));
+  setTextIfExists('countryParticipantsBeforeScreenFailAll', formatWholeNumber(countryBeforeScreenFailAll));
+  setTextIfExists('countryParticipantsAfterScreenFailAll', formatWholeNumber(countryAfterScreenFailAll));
 
   setTextIfExists('siteParticipantsBeforeScreenFail', formatWholeNumber(siteBeforeScreenFail));
   setTextIfExists('siteParticipantsAfterScreenFail', formatWholeNumber(siteAfterScreenFail));
+  setTextIfExists('siteParticipantsBeforeScreenFailAll', formatWholeNumber(siteBeforeScreenFailAll));
+  setTextIfExists('siteParticipantsAfterScreenFailAll', formatWholeNumber(siteAfterScreenFailAll));
+
+  const targetEnrollment = getNumberValue('targetEnrollmentKPI', 0);
+
+  setRiskClassIfBelowTarget('dashboardParticipantsAfterScreenFail', countryAfterScreenFail, targetEnrollment);
+  setRiskClassIfBelowTarget('countryParticipantsAfterScreenFail', countryAfterScreenFail, targetEnrollment);
+  setRiskClassIfBelowTarget('countryParticipantsAfterScreenFailAll', countryAfterScreenFailAll, targetEnrollment);
+  setRiskClassIfBelowTarget('siteParticipantsAfterScreenFail', siteAfterScreenFail, targetEnrollment);
+  setRiskClassIfBelowTarget('siteParticipantsAfterScreenFailAll', siteAfterScreenFailAll, targetEnrollment);
 }
 
 function getHistoricalApprovalDays(countryName) {
@@ -1120,12 +1182,9 @@ function buildSiteRows() {
           )
         : null;
 
-      const derivedActivationValue =
-        previousSite && previousSite.activation
-          ? previousSite.activation
-          : activationDate
-            ? formatDateForInput(activationDate)
-            : '';
+      const derivedActivationValue = activationDate
+        ? formatDateForInput(activationDate)
+        : '';
 
       const currentErMode =
         previousSite?.siteErMode || 'Global';
@@ -1153,7 +1212,7 @@ function buildSiteRows() {
 
       nextSites.push({
         siteKey: key,
-        include: previousSite ? Boolean(previousSite.include) : Boolean(country.initialCountry),
+        include: Boolean(country.initialCountry) && (previousSite ? Boolean(previousSite.include) : true),
         country: country.country,
         site: siteName,
         activation: derivedActivationValue,
@@ -1171,6 +1230,12 @@ function buildSiteRows() {
 }
 
 function resetSiteMaxParticipants() {
+  recalculateAllSiteMaxParticipants();
+  renderSiteTable();
+  runForecast();
+}
+
+function recalculateAllSiteMaxParticipants() {
   buildSiteRows();
 
   const countriesByName = new Map(
@@ -1200,9 +1265,37 @@ function resetSiteMaxParticipants() {
       siteCount
     );
   });
+}
 
-  renderSiteTable();
-  runForecast();
+function resetSiteMaxParticipantsForCountry(countryName) {
+  const normalizedCountryName = toStringValue(countryName).trim();
+  if (!normalizedCountryName) {
+    return;
+  }
+
+  buildSiteRows();
+
+  const countryItem = countryAssumptions.find(country => {
+    return toStringValue(country.country).trim() === normalizedCountryName;
+  });
+
+  if (!countryItem) {
+    return;
+  }
+
+  const countrySites = sites.filter(site => {
+    return toStringValue(site.country).trim() === normalizedCountryName;
+  });
+
+  const siteCount = Math.max(1, countrySites.length);
+
+  countrySites.forEach((site, index) => {
+    site.max = calculateSiteMaxParticipants(
+      countryItem,
+      index,
+      siteCount
+    );
+  });
 }
 
 function refreshEstimatedApprovalCell(row, currentItem) {
@@ -1361,6 +1454,10 @@ function handleCountryAssumptionInputChange(event) {
     }
   }
 
+  if (field === 'participantsPerCountry' || field === 'siteCount') {
+    resetSiteMaxParticipantsForCountry(currentItem.country);
+  }
+
   renderCountryAssumptionsTable();
   renderSiteActivationTimeline();
   renderSiteTable();
@@ -1463,6 +1560,7 @@ function renderCountryAssumptionsTable() {
     const participantsWithScreenFail = calculateParticipantsWithScreenFail(country.participantsPerCountry || 0);
     const estimatedApproval = calculateEstimatedApprovalDate(country.submissionDate, effectiveApprovalDays);
     const targetSubmissionDateForFps = calculateTargetSubmissionDateForFps(country);
+    const hasApprovalHistory = getHistoricalApprovalDays(country.country) !== null;
 
     row.innerHTML = `
     <td>
@@ -1486,8 +1584,8 @@ function renderCountryAssumptionsTable() {
     <td><input class="input-required" type="number" step="1" value="${country.siteCount}" data-field="siteCount" data-index="${index}" /></td>
     <td><input class="input-required" type="number" step="1" value="${country.averageTimeToActivateSite || ''}" data-field="averageTimeToActivateSite" data-index="${index}" /></td>
     <td><input class="input-required" type="text" value="${country.submissionDate ? formatDateForDisplay(country.submissionDate) : ''}" placeholder="DD-MMM-YYYY" data-field="submissionDate" data-index="${index}" /></td>
-      <td data-derived="estimatedApproval">${estimatedApproval ? formatDate(estimatedApproval) : ''}</td>
-      <td data-derived="targetSubmissionDateForFps">${targetSubmissionDateForFps ? formatDate(targetSubmissionDateForFps) : ''}</td>
+    <td data-derived="estimatedApproval" ${!hasApprovalHistory ? 'class="cell-warning" title="No approval history — enter an estimate"' : ''}>${estimatedApproval ? formatDate(estimatedApproval) : ''}</td>
+    <td data-derived="targetSubmissionDateForFps">${targetSubmissionDateForFps ? formatDate(targetSubmissionDateForFps) : ''}</td>
     `;
     body.appendChild(row);
   });
@@ -1511,7 +1609,10 @@ function addScenario() {
     screenFailRate: 0,
     enrollmentRate: 0,
     activationTimingAdjustment: 0,
-    selectedCountries: []
+    siteIncreasePerCountry: 0,
+    maxParticipantIncreasePerCountry: 0,
+    selectedCountries: [],
+    adjustmentCountries: []
   });
   renderScenarioList();
   runForecast();
@@ -1671,7 +1772,10 @@ function generateBestAddOnScenario() {
     screenFailRate: 0,
     enrollmentRate: 0,
     activationTimingAdjustment: 0,
-    selectedCountries: best.countries
+    siteIncreasePerCountry: 0,
+    maxParticipantIncreasePerCountry: 0,
+    selectedCountries: best.countries,
+    adjustmentCountries: []
   });
 
   renderScenarioList();
@@ -1701,11 +1805,18 @@ function handleScenarioFieldChange(event) {
     return; // no need to re-run forecast for name-only change
   } else if (field === 'screenFailRate' || field === 'enrollmentRate' || field === 'activationTimingAdjustment') {
     scenario[field] = Number(event.target.value || 0);
+  } else if (field === 'siteIncreasePerCountry') {
+    scenario.siteIncreasePerCountry = Math.max(0, Math.floor(Number(event.target.value || 0)));
+  } else if (field === 'maxParticipantIncreasePerCountry') {
+    scenario.maxParticipantIncreasePerCountry = Math.max(0, Math.floor(Number(event.target.value || 0)));
   }
 
-  // Always re-collect selected countries from DOM for this scenario
+  // Always re-collect scenario country selections from DOM for this scenario
   scenario.selectedCountries = Array.from(
     document.querySelectorAll(`.scenario-country-cb[data-scenario-id="${id}"]:checked`)
+  ).map(cb => cb.value);
+  scenario.adjustmentCountries = Array.from(
+    document.querySelectorAll(`.scenario-adjust-country-cb[data-scenario-id="${id}"]:checked`)
   ).map(cb => cb.value);
 
   runForecast();
@@ -1721,6 +1832,12 @@ function renderScenarioList() {
   }
 
   const nonInitialCountries = countryAssumptions.filter(c => c.country && !c.initialCountry);
+  const includedCountries = [...new Set(
+    countryAssumptions
+      .filter(country => country.country && country.initialCountry)
+      .map(country => toStringValue(country.country).trim())
+      .filter(country => country)
+  )].sort((a, b) => a.localeCompare(b));
 
   container.innerHTML = scenarios.map((sc, i) => {
     const color = SCENARIO_COLORS[i % SCENARIO_COLORS.length];
@@ -1736,6 +1853,18 @@ function renderScenarioList() {
             ${c.country}
           </label>`).join('')
       : '<span style="font-size:13px;color:var(--muted);">No non-initial countries defined.</span>';
+
+    const adjustmentCountriesHtml = includedCountries.length > 0
+      ? includedCountries.map(country => `
+          <label class="scenario-country-label">
+            <input type="checkbox"
+              class="scenario-adjust-country-cb"
+              data-scenario-id="${sc.id}"
+              value="${country}"
+              ${(Array.isArray(sc.adjustmentCountries) ? sc.adjustmentCountries : []).includes(country) ? 'checked' : ''}>
+            ${country}
+          </label>`).join('')
+      : '<span style="font-size:13px;color:var(--muted);">No currently included countries available.</span>';
 
     return `
       <div class="panel scenario-card" style="margin-bottom:16px;border-left:5px solid ${color};">
@@ -1782,6 +1911,20 @@ function renderScenarioList() {
               data-field="activationTimingAdjustment"
               value="${sc.activationTimingAdjustment}" />
           </label>
+          <label>Additional Sites per Adjusted Country
+            <input type="number" step="1" min="0"
+              class="scenario-field"
+              data-scenario-id="${sc.id}"
+              data-field="siteIncreasePerCountry"
+              value="${Math.max(0, Math.floor(Number(sc.siteIncreasePerCountry || 0)))}" />
+          </label>
+          <label>Additional Max Participants per Adjusted Country
+            <input type="number" step="1" min="0"
+              class="scenario-field"
+              data-scenario-id="${sc.id}"
+              data-field="maxParticipantIncreasePerCountry"
+              value="${Math.max(0, Math.floor(Number(sc.maxParticipantIncreasePerCountry || 0)))}" />
+          </label>
         </div>
 
         ${nonInitialCountries.length > 0 ? `
@@ -1789,6 +1932,10 @@ function renderScenarioList() {
             <p class="scenario-countries-label">Additional Countries to Include</p>
             <div class="scenario-countries-grid">${countriesHtml}</div>
           </div>` : ''}
+        <div style="margin-top:12px;">
+          <p class="scenario-countries-label">Included Countries to Adjust (Sites / Max Participants)</p>
+          <div class="scenario-countries-grid">${adjustmentCountriesHtml}</div>
+        </div>
       </div>`;
   }).join('');
 
@@ -1798,6 +1945,9 @@ function renderScenarioList() {
   });
 
   container.querySelectorAll('.scenario-country-cb').forEach(cb => {
+    cb.addEventListener('change', handleScenarioFieldChange);
+  });
+  container.querySelectorAll('.scenario-adjust-country-cb').forEach(cb => {
     cb.addEventListener('change', handleScenarioFieldChange);
   });
 
@@ -1847,7 +1997,9 @@ function renderSiteTable() {
       value="${site.activation ? formatDateForDisplay(site.activation) : ''}"
       placeholder="DD-MMM-YYYY"
       data-field="activation"
-      data-index="${index}" />
+      data-index="${index}"
+      readonly
+      style="background:#f8fafc;color:#667085;" />
   </td>
 
   <td>
@@ -1935,8 +2087,6 @@ function renderSiteTable() {
       }
     } else if (field === 'max' || field === 'currentEnrollment') {
       sites[index][field] = Number(event.target.value);
-    } else if (field === 'activation') {
-      sites[index][field] = normalizeDateInputValue(event.target.value);
     } else {
       sites[index][field] = event.target.value;
     }
@@ -2203,8 +2353,8 @@ function generateForecastMonths(
   return forecastMonths;
 }
 
-function calculateCountryContributions(forecastMonths) {
-  const simulation = buildEnrollmentSimulation(sites, forecastMonths);
+function calculateCountryContributions(siteList, forecastMonths) {
+  const simulation = buildEnrollmentSimulation(siteList, forecastMonths);
 
   return Object.entries(simulation.countryTotals)
     .map(([country, total]) => ({
@@ -2307,6 +2457,66 @@ function renderCountryContributionChart(countryContributions) {
     </svg>
   `;
 }
+
+function renderCountryContributionComparison(baseContributions, scenarioContributionSets) {
+  const panel = document.getElementById('countryContributionComparisonPanel');
+  const head = document.getElementById('countryContributionComparisonHead');
+  const body = document.getElementById('countryContributionComparisonBody');
+
+  if (!panel || !head || !body) {
+    return;
+  }
+
+  if (!scenarioContributionSets || scenarioContributionSets.length === 0) {
+    panel.style.display = 'none';
+    head.innerHTML = '';
+    body.innerHTML = '';
+    return;
+  }
+
+  panel.style.display = '';
+
+  const countries = new Set(baseContributions.map(item => item.country));
+  scenarioContributionSets.forEach(set => {
+    (set.contributions || []).forEach(item => countries.add(item.country));
+  });
+
+  const baseMap = new Map(baseContributions.map(item => [item.country, Number(item.total || 0)]));
+  const scenarioMaps = scenarioContributionSets.map(set => {
+    return new Map((set.contributions || []).map(item => [item.country, Number(item.total || 0)]));
+  });
+
+  const sortedCountries = Array.from(countries).sort((a, b) => {
+    const aValue = baseMap.get(a) || 0;
+    const bValue = baseMap.get(b) || 0;
+    return bValue - aValue;
+  });
+
+  head.innerHTML = `
+    <tr>
+      <th>Country</th>
+      <th>Baseline</th>
+      ${scenarioContributionSets.map(set => `<th>${set.name}</th>`).join('')}
+    </tr>
+  `;
+
+  body.innerHTML = sortedCountries.map(country => {
+    const baselineValue = baseMap.get(country) || 0;
+    const scenarioCells = scenarioMaps.map(map => {
+      const value = map.get(country) || 0;
+      return `<td>${formatEnrollment(value)}</td>`;
+    }).join('');
+
+    return `
+      <tr>
+        <td>${country}</td>
+        <td>${formatEnrollment(baselineValue)}</td>
+        ${scenarioCells}
+      </tr>
+    `;
+  }).join('');
+}
+
 function getSiteActivationMonth(site) {
   const activation =
     parseDateInput(site.activation);
@@ -2411,7 +2621,8 @@ function calculateSiteActivationCurve(
 }
 
 function renderSiteActivationCurveChart(
-  activationCurve
+  activationCurve,
+  scenarioCurves = []
 ) {
   const chart =
     document.getElementById(
@@ -2424,22 +2635,61 @@ function renderSiteActivationCurveChart(
 
   chart.innerHTML = '';
 
-  if (!activationCurve || activationCurve.length === 0) {
+  const scenarioSeries = Array.isArray(scenarioCurves) ? scenarioCurves : [];
+  const hasBaseline = Array.isArray(activationCurve) && activationCurve.length > 0;
+  const hasScenarios = scenarioSeries.some(item => Array.isArray(item.curve) && item.curve.length > 0);
+
+  if (!hasBaseline && !hasScenarios) {
     chart.innerHTML =
       '<p class="empty-chart-message">No site activation data to display.</p>';
 
     return;
   }
 
- const width = Math.max(
-  1400,
-  activationCurve.length * 65
-);
+  const allMonths = Array.from(new Set([
+    ...(activationCurve || []).map(row => row.month),
+    ...scenarioSeries.flatMap(item => (item.curve || []).map(row => row.month))
+  ])).sort();
 
-  const height = 360;
+  if (allMonths.length === 0) {
+    chart.innerHTML =
+      '<p class="empty-chart-message">No site activation data to display.</p>';
+    return;
+  }
+
+  function alignCurve(curveRows) {
+    const sortedRows = [...(curveRows || [])].sort((a, b) => a.month.localeCompare(b.month));
+    let cursor = 0;
+    let activeSites = 0;
+
+    return allMonths.map(month => {
+      while (cursor < sortedRows.length && sortedRows[cursor].month <= month) {
+        activeSites = Number(sortedRows[cursor].activeSites || 0);
+        cursor += 1;
+      }
+
+      return {
+        month,
+        activeSites
+      };
+    });
+  }
+
+  const baselineSeries = alignCurve(activationCurve || []);
+  const alignedScenarioSeries = scenarioSeries.map(item => ({
+    ...item,
+    curve: alignCurve(item.curve || [])
+  }));
+
+  const width = Math.max(
+    1400,
+    allMonths.length * 65
+  );
+
+  const height = 380;
 
   const padding = {
-    top: 35,
+    top: Math.max(60, 34 + (1 + alignedScenarioSeries.length) * 16),
     right: 40,
     bottom: 70,
     left: 60
@@ -2451,16 +2701,19 @@ function renderSiteActivationCurveChart(
   const chartHeight =
     height - padding.top - padding.bottom;
 
+  const allValues = [
+    ...baselineSeries.map(row => Number(row.activeSites || 0)),
+    ...alignedScenarioSeries.flatMap(item => item.curve.map(row => Number(row.activeSites || 0)))
+  ];
+
   const maxSites = Math.max(
-    ...activationCurve.map(row =>
-      Number(row.activeSites || 0)
-    ),
+    ...allValues,
     1
   );
 
   const xStep =
     chartWidth /
-    Math.max(1, activationCurve.length - 1);
+    Math.max(1, allMonths.length - 1);
 
   function getX(index) {
     return padding.left + index * xStep;
@@ -2474,16 +2727,22 @@ function renderSiteActivationCurveChart(
     );
   }
 
-  const activationPoints =
-    activationCurve
-      .map((row, index) => {
-        return `${getX(index)},${getY(row.activeSites)}`;
-      })
+  function buildPoints(curveRows) {
+    return curveRows
+      .map((row, index) => `${getX(index)},${getY(row.activeSites)}`)
       .join(' ');
+  }
 
+  const baselinePoints = buildPoints(baselineSeries);
+
+  const xLabelStep = Math.max(1, Math.ceil(allMonths.length / 14));
   const xLabels =
-    activationCurve
-      .map((row, index) => {
+    allMonths
+      .map((month, index) => {
+        if (index % xLabelStep !== 0 && index !== allMonths.length - 1) {
+          return '';
+        }
+
         const x = getX(index);
         const y = height - 30;
 
@@ -2493,49 +2752,74 @@ function renderSiteActivationCurveChart(
             y="${y}"
             class="site-activation-x-label"
             transform="rotate(-45 ${x} ${y})">
-            ${formatMonthLabel(row.month)}
+            ${formatMonthLabel(month)}
           </text>
         `;
       })
       .join('');
 
-  const valueLabels =
-    activationCurve
-      .map((row, index) => {
-        const x = getX(index);
-        const y = getY(row.activeSites) - 8;
+  const baselineDots = baselineSeries
+    .map((row, index) => {
+      return `
+        <circle
+          cx="${getX(index)}"
+          cy="${getY(row.activeSites)}"
+          r="3"
+          class="site-activation-dot">
+        </circle>
+      `;
+    })
+    .join('');
 
-        return `
-          <text
-            x="${x}"
-            y="${y}"
-            class="site-activation-value-label">
-            ${row.activeSites}
-          </text>
-        `;
-      })
-      .join('');
+  const baselineValueLabels = baselineSeries
+    .map((row, index) => {
+      if (index % xLabelStep !== 0 && index !== allMonths.length - 1) {
+        return '';
+      }
 
-  const dots =
-    activationCurve
-      .map((row, index) => {
-        return `
-          <circle
-            cx="${getX(index)}"
-            cy="${getY(row.activeSites)}"
-            r="4"
-            class="site-activation-dot">
-          </circle>
-        `;
-      })
-      .join('');
+      return `
+        <text
+          x="${getX(index)}"
+          y="${getY(row.activeSites) - 8}"
+          class="site-activation-value-label">
+          ${row.activeSites}
+        </text>
+      `;
+    })
+    .join('');
+
+  const scenarioLines = alignedScenarioSeries.map(item => {
+    const points = buildPoints(item.curve);
+    const dots = item.curve.map((row, index) => `
+      <circle cx="${getX(index)}" cy="${getY(row.activeSites)}" r="2.5" fill="${item.color}"></circle>
+    `).join('');
+
+    return `
+      <polyline points="${points}" fill="none" stroke="${item.color}" stroke-width="2.5" stroke-dasharray="6 4"></polyline>
+      ${dots}
+    `;
+  }).join('');
+
+  const legendItems = [
+    `<text x="${padding.left + 220}" y="34" font-size="12" fill="#7c3aed" font-weight="600">-- Baseline</text>`,
+    ...alignedScenarioSeries.map((item, index) => `
+      <text
+        x="${padding.left + 220}"
+        y="${34 + (index + 1) * 16}"
+        font-size="12"
+        fill="${item.color}"
+        font-weight="600">
+        -- ${item.name}
+      </text>
+    `)
+  ].join('');
 
   chart.innerHTML = `
     <svg
       class="site-activation-svg"
       viewBox="0 0 ${width} ${height}"
       role="img"
-      aria-label="Site activation curve">
+      aria-label="Site activation curve comparison">
 
       <line
         x1="${padding.left}"
@@ -2554,68 +2838,155 @@ function renderSiteActivationCurveChart(
       </line>
 
       <polyline
-        points="${activationPoints}"
+        points="${baselinePoints}"
         class="site-activation-line">
       </polyline>
 
-      ${dots}
-
-      ${valueLabels}
-
+      ${baselineDots}
+      ${baselineValueLabels}
+      ${scenarioLines}
       ${xLabels}
 
       <text
         x="${padding.left}"
         y="18"
         class="site-activation-title">
-        Cumulative Active Sites
+        Cumulative Active Sites (Baseline vs Scenario)
       </text>
+
+      ${legendItems}
     </svg>
   `;
 }
+
 function buildScenarioSitesForScenario(scenario) {
   if (!scenario.enabled) {
     return [];
   }
 
   const selectedCountries = scenario.selectedCountries || [];
+  const selectedCountrySet = new Set(selectedCountries);
+  const startupCountrySet = new Set(
+    countryAssumptions
+      .filter(country => country.country && country.initialCountry)
+      .map(country => toStringValue(country.country).trim())
+      .filter(country => country)
+  );
+  const adjustmentCountries = (Array.isArray(scenario.adjustmentCountries) ? scenario.adjustmentCountries : [])
+    .filter(country => startupCountrySet.has(country));
+
+  const baseScreenFail = getNumberValue('screenFailRateKPI', 0);
+  const scenarioScreenFail = scenario.screenFailRate > 0
+    ? Number(scenario.screenFailRate)
+    : baseScreenFail;
 
   const scenarioSites = sites
-    .filter(site => site.include || selectedCountries.includes(site.country))
-    .map(site => {
-      const scenarioSite = { ...site };
+    .filter(site => site.include || selectedCountrySet.has(site.country))
+    .map(site => ({
+      ...site,
+      include: site.include || selectedCountrySet.has(site.country)
+    }));
 
-      if (selectedCountries.includes(site.country)) {
-        scenarioSite.include = true;
+  const siteIncreasePerCountry = Math.max(0, Math.floor(Number(scenario.siteIncreasePerCountry || 0)));
+
+  if (siteIncreasePerCountry > 0 && adjustmentCountries.length > 0) {
+    adjustmentCountries.forEach(country => {
+      const existingCountrySites = scenarioSites.filter(site => site.country === country);
+
+      if (existingCountrySites.length === 0) {
+        return;
       }
 
-      const baseScreenFail = getNumberValue('screenFailRateKPI', 0);
-      const scenarioScreenFail = scenario.screenFailRate > 0
-        ? Number(scenario.screenFailRate)
-        : baseScreenFail;
+      const countryInfo = countryAssumptions.find(c => c.country === country);
+      const activationSpacingDays = countryInfo
+        ? Math.max(1, Number(countryInfo.averageTimeToActivateSite || 1))
+        : 30;
 
-      const countryInfo = countryAssumptions.find(c => c.country === site.country);
+      const lastActivationDate = existingCountrySites
+        .map(site => parseDateInput(site.activation))
+        .filter(date => date)
+        .sort((a, b) => a.getTime() - b.getTime())
+        .pop();
 
-      if (countryInfo) {
-        const participants = Number(countryInfo.participantsPerCountry || 0);
-        const siteCount = Math.max(1, Number(countryInfo.siteCount || 1));
-        scenarioSite.max = Math.round(participants * (1 - scenarioScreenFail / 100) / siteCount);
+      for (let i = 0; i < siteIncreasePerCountry; i += 1) {
+        const templateSite = existingCountrySites[i % existingCountrySites.length];
+        const clone = {
+          ...templateSite,
+          include: true,
+          siteKey: `${toStringValue(templateSite.siteKey)}|scenario-${scenario.id}|extra-${country}-${i + 1}`,
+          site: `${country} Scenario Site ${existingCountrySites.length + i + 1}`
+        };
+
+        if (lastActivationDate) {
+          clone.activation = formatDateForInput(
+            addDays(lastActivationDate, activationSpacingDays * (i + 1))
+          );
+        }
+
+        scenarioSites.push(clone);
       }
-
-      if (scenario.enrollmentRate > 0) {
-        scenarioSite.er = Number(scenario.enrollmentRate);
-      }
-
-      const activationDate = parseDateInput(site.activation);
-      if (activationDate) {
-        const adjustment = Number(scenario.activationTimingAdjustment || 0);
-        scenarioSite.activation = formatDateForInput(
-          adjustment === 0 ? activationDate : addDays(activationDate, adjustment)
-        );
-      }
-
-      return scenarioSite;
     });
+  }
+
+  const maxParticipantIncreasePerCountry = Math.max(0, Math.floor(Number(scenario.maxParticipantIncreasePerCountry || 0)));
+  const additionalMaxBySiteKey = {};
+
+  if (maxParticipantIncreasePerCountry > 0 && adjustmentCountries.length > 0) {
+    adjustmentCountries.forEach(country => {
+      const includedCountrySites = scenarioSites.filter(site => site.include && site.country === country);
+
+      if (includedCountrySites.length === 0) {
+        return;
+      }
+
+      const baseIncrease = Math.floor(maxParticipantIncreasePerCountry / includedCountrySites.length);
+      const remainder = maxParticipantIncreasePerCountry % includedCountrySites.length;
+
+      includedCountrySites.forEach((site, index) => {
+        const siteKey = toStringValue(site.siteKey);
+        const increment = baseIncrease + (index < remainder ? 1 : 0);
+        additionalMaxBySiteKey[siteKey] = (additionalMaxBySiteKey[siteKey] || 0) + increment;
+      });
+    });
+  }
+
+  const effectiveSiteCountByCountry = {};
+
+  scenarioSites.forEach(site => {
+    if (!site.include) {
+      return;
+    }
+
+    effectiveSiteCountByCountry[site.country] = (effectiveSiteCountByCountry[site.country] || 0) + 1;
+  });
+
+  scenarioSites.forEach(scenarioSite => {
+    const countryInfo = countryAssumptions.find(c => c.country === scenarioSite.country);
+
+    if (countryInfo) {
+      const participants = Number(countryInfo.participantsPerCountry || 0);
+      const siteCount = Math.max(1, Number(effectiveSiteCountByCountry[scenarioSite.country] || countryInfo.siteCount || 1));
+      scenarioSite.max = Math.round(participants * (1 - scenarioScreenFail / 100) / siteCount);
+    }
+
+    const siteKey = toStringValue(scenarioSite.siteKey);
+    const maxIncrease = Number(additionalMaxBySiteKey[siteKey] || 0);
+    if (maxIncrease > 0) {
+      scenarioSite.max = Math.max(0, Number(scenarioSite.max || 0)) + maxIncrease;
+    }
+
+    if (scenario.enrollmentRate > 0) {
+      scenarioSite.er = Number(scenario.enrollmentRate);
+    }
+
+    const activationDate = parseDateInput(scenarioSite.activation);
+    if (activationDate) {
+      const adjustment = Number(scenario.activationTimingAdjustment || 0);
+      scenarioSite.activation = formatDateForInput(
+        adjustment === 0 ? activationDate : addDays(activationDate, adjustment)
+      );
+    }
+  });
 
   return scenarioSites;
 }
@@ -2654,6 +3025,23 @@ function mergeForecastMonths(currentMonths, scenarioMonths) {
       ...scenarioMonths
     ])
   ).sort();
+}
+
+// Extends the simulation beyond the chart window to find the projected LPI date
+// even when the target isn't reached within the visible forecast period.
+function projectLpiDate(includedSites, target, forecastMonths) {
+  if (forecastMonths.length === 0 || !target) return null;
+
+  const lastMonth = new Date(forecastMonths[forecastMonths.length - 1] + 'T00:00:00');
+  const extendedMonths = [...forecastMonths];
+
+  for (let i = 1; i <= 60; i++) {
+    extendedMonths.push(formatMonthForForecast(addForecastMonths(lastMonth, i)));
+  }
+
+  const extendedForecast = calculateForecastForSites(includedSites, extendedMonths, target);
+  const lpiRow = extendedForecast.find(row => row.cumulative >= target);
+  return lpiRow ? lpiRow.month : null;
 }
 
  
@@ -2814,7 +3202,32 @@ const allScenarioForecasts = enabledScenarios
     return {
       name: scenario.name || `Scenario ${i + 1}`,
       color: SCENARIO_COLORS[i % SCENARIO_COLORS.length],
+      selectedCountries: Array.isArray(scenario.selectedCountries) ? scenario.selectedCountries : [],
       forecast: calculateForecastForSites(scenarioSites, forecastMonths, target)
+    };
+  })
+  .filter(Boolean);
+
+const allScenarioCountryContributions = enabledScenarios
+  .map((scenario, i) => {
+    const scenarioSites = allScenarioSitesList[i];
+    if (!scenarioSites || scenarioSites.length === 0) return null;
+    return {
+      name: scenario.name || `Scenario ${i + 1}`,
+      color: SCENARIO_COLORS[i % SCENARIO_COLORS.length],
+      contributions: calculateCountryContributions(scenarioSites, forecastMonths)
+    };
+  })
+  .filter(Boolean);
+
+const allScenarioActivationCurves = enabledScenarios
+  .map((scenario, i) => {
+    const scenarioSites = allScenarioSitesList[i];
+    if (!scenarioSites || scenarioSites.length === 0) return null;
+    return {
+      name: scenario.name || `Scenario ${i + 1}`,
+      color: SCENARIO_COLORS[i % SCENARIO_COLORS.length],
+      curve: calculateSiteActivationCurve(scenarioSites, targetLpi)
     };
   })
   .filter(Boolean);
@@ -2822,15 +3235,17 @@ const allScenarioForecasts = enabledScenarios
 if (forecast.length === 0) {
 
   renderForecastTable([], target);
+  renderEnrollmentByMonthScenarioComparison([], allScenarioForecasts);
 
   renderChart([], target, [], null);
 
   setTextIfExists('kpiProjected', 0);
   setTextIfExists('kpiForecastLpi', 'Target Not Met');
   setTextIfExists('kpiActiveSites', 0);
-  renderSiteActivationCurveChart([]);
+  renderSiteActivationCurveChart([], allScenarioActivationCurves);
   renderCountryContributionChart([]);
-  renderScenarioComparisonTable(includedSites, [], allScenarioSitesList, allScenarioForecasts, target);
+  renderCountryContributionComparison([], allScenarioCountryContributions);
+  renderScenarioComparisonTable(includedSites, [], allScenarioSitesList, allScenarioForecasts, target, forecastMonths);
   renderCurrentStateSummary({
     forecast: [],
     target,
@@ -2845,14 +3260,19 @@ if (forecast.length === 0) {
   const activeSites = sites.filter(site => site.include).length;
   const projected = forecast[forecast.length - 1].cumulative;
 
+  // If target isn't reached within the chart window, extend simulation to find projected date
+  const projectedLpiMonth = lpiRow
+    ? lpiRow.month
+    : (includedSites.length > 0 ? projectLpiDate(includedSites, target, forecastMonths) : null);
+
   let status;
-  if (!lpiRow) {
+  if (!projectedLpiMonth) {
     status = 'Target Not Met';
   } else if (!parsedTargetLpiDate) {
     status = 'On Track';
   } else {
-    const forecastLpiDate = new Date(lpiRow.month + 'T00:00:00');
-    const diff = monthDiff(forecastLpiDate, parsedTargetLpiDate);
+    const projectedDate = new Date(projectedLpiMonth + 'T00:00:00');
+    const diff = monthDiff(projectedDate, parsedTargetLpiDate);
     if (diff > 0) {
       status = `On Track (${diff} month${diff === 1 ? '' : 's'} ahead)`;
     } else if (diff < 0) {
@@ -2866,7 +3286,7 @@ if (forecast.length === 0) {
   setTextIfExists('kpiTarget', target);
   setTextIfExists('kpiProjected', formatEnrollment(projected));
   setTextIfExists('kpiTargetLpi', parsedTargetLpiDate ? formatDate(parsedTargetLpiDate) : '--');
-  setTextIfExists('kpiForecastLpi', lpiRow ? formatDate(lpiRow.month) : 'Target Not Met');
+  setTextIfExists('kpiForecastLpi', projectedLpiMonth ? formatDate(projectedLpiMonth) : 'Target Not Met');
   setTextIfExists('kpiActiveSites', activeSites);
 
   const statusElement = document.getElementById('kpiStatus');
@@ -2880,32 +3300,36 @@ if (forecast.length === 0) {
   }
 
 renderForecastTable(forecast, target);
+renderEnrollmentByMonthScenarioComparison(forecast, allScenarioForecasts);
 
 const monthlyByCountry = calculateMonthlyByCountry(includedSites, forecastMonths);
-renderChart(forecast, target, allScenarioForecasts, monthlyByCountry);
+const countryColorToggle = document.getElementById('countryColorToggle');
+const showCountryColors = !countryColorToggle || countryColorToggle.checked;
+renderChart(
+  forecast,
+  target,
+  allScenarioForecasts,
+  showCountryColors ? monthlyByCountry : null
+);
 
-const countryContributions = calculateCountryContributions(forecastMonths);
+const countryContributions = calculateCountryContributions(includedSites, forecastMonths);
 renderCountryContributionChart(countryContributions);
+renderCountryContributionComparison(countryContributions, allScenarioCountryContributions);
 
-const activationCurveSites =
-  allScenarioSitesList.length > 0 && allScenarioSitesList[0].length > 0
-    ? allScenarioSitesList[0]
-    : includedSites;
+const siteActivationCurve = calculateSiteActivationCurve(includedSites, targetLpi);
+renderSiteActivationCurveChart(siteActivationCurve, allScenarioActivationCurves);
 
-const siteActivationCurve = calculateSiteActivationCurve(activationCurveSites, targetLpi);
-renderSiteActivationCurveChart(siteActivationCurve);
-
-renderScenarioComparisonTable(includedSites, forecast, allScenarioSitesList, allScenarioForecasts, target);
+renderScenarioComparisonTable(includedSites, forecast, allScenarioSitesList, allScenarioForecasts, target, forecastMonths);
 renderCurrentStateSummary({
   forecast,
   target,
-  lpiRow,
+  lpiRow: projectedLpiMonth ? { month: projectedLpiMonth } : null,
   parsedTargetLpiDate,
   includedSites
 });
 }
 
-function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioSitesList, allScenarioForecasts, target) {
+function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioSitesList, allScenarioForecasts, target, forecastMonths) {
   const panel = document.getElementById('scenarioComparisonPanel');
   const body = document.getElementById('scenarioComparisonBody');
   if (!panel || !body) return;
@@ -2918,31 +3342,49 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
 
   panel.style.display = '';
 
-  function summariseSites(siteList) {
-    const filtered = siteList.filter(s => s.include);
-    const countries = [...new Set(filtered.map(s => s.country))];
-    const totalParticipants = filtered.reduce((sum, s) => sum + Number(s.max || 0), 0);
+  const startupCountrySet = new Set(
+    countryAssumptions
+      .filter(country => country.country && country.initialCountry)
+      .map(country => country.country)
+  );
+
+  function summariseSites(siteList, selectedCountries = []) {
+    const scenarioAddedCountries = new Set(
+      selectedCountries.filter(country => country && !startupCountrySet.has(country))
+    );
+    const scopedCountries = new Set([
+      ...startupCountrySet,
+      ...scenarioAddedCountries
+    ]);
+    const filtered = siteList.filter(site => site.include && scopedCountries.has(site.country));
+    const totalParticipants = filtered.reduce((sum, site) => sum + Number(site.max || 0), 0);
     return {
-      countryCount: countries.length,
+      countryCount: startupCountrySet.size + scenarioAddedCountries.size,
       siteCount: filtered.length,
       totalParticipants
     };
   }
 
-  function findLpiRow(forecastRows) {
-    return forecastRows.find(row => row.cumulative >= target) || null;
+  function findLpiMonth(forecastRows, siteList) {
+    const row = forecastRows.find(r => r.cumulative >= target);
+    if (row) return row.month;
+    // Extend simulation if not reached within chart window
+    if (siteList && forecastMonths && forecastMonths.length > 0) {
+      return projectLpiDate(siteList, target, forecastMonths);
+    }
+    return null;
   }
 
   const baseSummary = summariseSites(includedSites);
-  const baseLpiRow = findLpiRow(baseForecast);
-  const baseLpiDate = baseLpiRow ? new Date(baseLpiRow.month + 'T00:00:00') : null;
+  const baseLpiMonth = findLpiMonth(baseForecast, includedSites);
+  const baseLpiDate = baseLpiMonth ? new Date(baseLpiMonth + 'T00:00:00') : null;
 
-  function diffLabel(scenarioLpiRow) {
-    if (!baseLpiRow && !scenarioLpiRow) return { text: '—', cls: '' };
-    if (!baseLpiRow) return { text: 'Base misses target', cls: 'status-good' };
-    if (!scenarioLpiRow) return { text: 'Misses target', cls: 'status-risk' };
+  function diffLabel(scenarioLpiMonth) {
+    if (!baseLpiMonth && !scenarioLpiMonth) return { text: '—', cls: '' };
+    if (!baseLpiMonth) return { text: 'Base misses target', cls: 'status-good' };
+    if (!scenarioLpiMonth) return { text: 'Misses target', cls: 'status-risk' };
 
-    const scenarioDate = new Date(scenarioLpiRow.month + 'T00:00:00');
+    const scenarioDate = new Date(scenarioLpiMonth + 'T00:00:00');
     const diff = monthDiff(scenarioDate, baseLpiDate); // positive = scenario is earlier (better)
 
     if (diff === 0) return { text: 'Same as base', cls: '' };
@@ -2960,7 +3402,7 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
       <td>${baseSummary.countryCount}</td>
       <td>${baseSummary.siteCount}</td>
       <td>${baseSummary.totalParticipants.toLocaleString()}</td>
-      <td>${baseLpiRow ? formatDate(baseLpiRow.month) : '<span class="status-risk">Target not met</span>'}</td>
+      <td>${baseLpiMonth ? formatDate(baseLpiMonth) : '<span class="status-risk">Target not met</span>'}</td>
       <td>—</td>
     </tr>
   `);
@@ -2968,9 +3410,9 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
   // One row per scenario
   allScenarioForecasts.forEach((sf, i) => {
     const scenarioSites = allScenarioSitesList[i] || [];
-    const summary = summariseSites(scenarioSites);
-    const lpiRow = findLpiRow(sf.forecast);
-    const diff = diffLabel(lpiRow);
+    const summary = summariseSites(scenarioSites, sf.selectedCountries);
+    const lpiMonth = findLpiMonth(sf.forecast, scenarioSites);
+    const diff = diffLabel(lpiMonth);
 
     const colorDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sf.color};margin-right:6px;"></span>`;
 
@@ -2980,7 +3422,7 @@ function renderScenarioComparisonTable(includedSites, baseForecast, allScenarioS
         <td>${summary.countryCount}</td>
         <td>${summary.siteCount}</td>
         <td>${summary.totalParticipants.toLocaleString()}</td>
-        <td>${lpiRow ? formatDate(lpiRow.month) : '<span class="status-risk">Target not met</span>'}</td>
+        <td>${lpiMonth ? formatDate(lpiMonth) : '<span class="status-risk">Target not met</span>'}</td>
         <td class="${diff.cls}">${diff.text}</td>
       </tr>
     `);
@@ -3010,6 +3452,55 @@ function renderForecastTable(forecast, target) {
 
     body.appendChild(tr);
   });
+}
+
+function renderEnrollmentByMonthScenarioComparison(baseForecast, scenarioForecasts) {
+  const panel = document.getElementById('enrollmentScenarioComparisonPanel');
+  const head = document.getElementById('enrollmentScenarioComparisonHead');
+  const body = document.getElementById('enrollmentScenarioComparisonBody');
+
+  if (!panel || !head || !body) {
+    return;
+  }
+
+  if (!scenarioForecasts || scenarioForecasts.length === 0) {
+    panel.style.display = 'none';
+    head.innerHTML = '';
+    body.innerHTML = '';
+    return;
+  }
+
+  panel.style.display = '';
+
+  const months = baseForecast.map(row => row.month);
+  const baselineMap = new Map(baseForecast.map(row => [row.month, Number(row.cumulative || 0)]));
+  const scenarioMaps = scenarioForecasts.map(sf => {
+    return new Map(sf.forecast.map(row => [row.month, Number(row.cumulative || 0)]));
+  });
+
+  head.innerHTML = `
+    <tr>
+      <th>Month</th>
+      <th>Baseline Cumulative</th>
+      ${scenarioForecasts.map(sf => `<th>${sf.name} Cumulative</th>`).join('')}
+    </tr>
+  `;
+
+  body.innerHTML = months.map(month => {
+    const baselineValue = baselineMap.get(month) || 0;
+    const scenarioCells = scenarioMaps.map(map => {
+      const value = map.get(month) || 0;
+      return `<td>${formatEnrollment(value)}</td>`;
+    }).join('');
+
+    return `
+      <tr>
+        <td>${formatDate(month)}</td>
+        <td>${formatEnrollment(baselineValue)}</td>
+        ${scenarioCells}
+      </tr>
+    `;
+  }).join('');
 }
 
 function formatMonthLabel(monthValue) {
@@ -3582,7 +4073,10 @@ if (studyNameInput) {
     'currentStateAsOfDate'
   ];
 
-  const refreshStudySetup = () => {
+  const refreshStudySetup = (changedInputId = '') => {
+    if (changedInputId === 'screenFailRateKPI') {
+      recalculateAllSiteMaxParticipants();
+    }
     runForecast();
     renderCountryAssumptionsTable();
     renderSiteActivationTimeline();
@@ -3593,8 +4087,8 @@ if (studyNameInput) {
     const input = document.getElementById(id);
 
     if (input) {
-      input.addEventListener('change', refreshStudySetup);
-      input.addEventListener('blur', refreshStudySetup);
+      input.addEventListener('change', () => refreshStudySetup(id));
+      input.addEventListener('blur', () => refreshStudySetup(id));
     }
   });
 
@@ -3608,6 +4102,13 @@ if (studyNameInput) {
 
   if (runForecastSites) {
     runForecastSites.addEventListener('click', runForecast);
+  }
+
+  const countryColorToggle = document.getElementById('countryColorToggle');
+  if (countryColorToggle) {
+    countryColorToggle.addEventListener('change', () => {
+      runForecast(false);
+    });
   }
 
   const addCountryButton = document.getElementById('addCountryAssumptionRow');
