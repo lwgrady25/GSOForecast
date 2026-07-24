@@ -496,6 +496,8 @@ function getAppStateSnapshot() {
       screenFailRate: toFiniteNumber(item.screenFailRate, 0),
       enrollmentRate: toFiniteNumber(item.enrollmentRate, 0),
       activationTimingAdjustment: toFiniteNumber(item.activationTimingAdjustment, 0),
+      siteIncreasePerCountry: toFiniteNumber(item.siteIncreasePerCountry, 0),
+      maxParticipantIncreasePerCountry: toFiniteNumber(item.maxParticipantIncreasePerCountry, 0),
       selectedCountries: Array.isArray(item.selectedCountries)
         ? item.selectedCountries.map(value => toStringValue(value))
         : []
@@ -606,6 +608,8 @@ function normalizeScenarios(items) {
       screenFailRate: toFiniteNumber(item.screenFailRate, 0),
       enrollmentRate: toFiniteNumber(item.enrollmentRate, 0),
       activationTimingAdjustment: toFiniteNumber(item.activationTimingAdjustment, 0),
+      siteIncreasePerCountry: toFiniteNumber(item.siteIncreasePerCountry, 0),
+      maxParticipantIncreasePerCountry: toFiniteNumber(item.maxParticipantIncreasePerCountry, 0),
       selectedCountries: Array.isArray(item.selectedCountries)
         ? item.selectedCountries.map(value => toStringValue(value))
         : []
@@ -1509,6 +1513,8 @@ function addScenario() {
     screenFailRate: 0,
     enrollmentRate: 0,
     activationTimingAdjustment: 0,
+    siteIncreasePerCountry: 0,
+    maxParticipantIncreasePerCountry: 0,
     selectedCountries: []
   });
   renderScenarioList();
@@ -1669,6 +1675,8 @@ function generateBestAddOnScenario() {
     screenFailRate: 0,
     enrollmentRate: 0,
     activationTimingAdjustment: 0,
+    siteIncreasePerCountry: 0,
+    maxParticipantIncreasePerCountry: 0,
     selectedCountries: best.countries
   });
 
@@ -1699,6 +1707,10 @@ function handleScenarioFieldChange(event) {
     return; // no need to re-run forecast for name-only change
   } else if (field === 'screenFailRate' || field === 'enrollmentRate' || field === 'activationTimingAdjustment') {
     scenario[field] = Number(event.target.value || 0);
+  } else if (field === 'siteIncreasePerCountry') {
+    scenario.siteIncreasePerCountry = Math.max(0, Math.floor(Number(event.target.value || 0)));
+  } else if (field === 'maxParticipantIncreasePerCountry') {
+    scenario.maxParticipantIncreasePerCountry = Math.max(0, Math.floor(Number(event.target.value || 0)));
   }
 
   // Always re-collect selected countries from DOM for this scenario
@@ -1779,6 +1791,20 @@ function renderScenarioList() {
               data-scenario-id="${sc.id}"
               data-field="activationTimingAdjustment"
               value="${sc.activationTimingAdjustment}" />
+          </label>
+          <label>Additional Sites per Selected Country
+            <input type="number" step="1" min="0"
+              class="scenario-field"
+              data-scenario-id="${sc.id}"
+              data-field="siteIncreasePerCountry"
+              value="${Math.max(0, Math.floor(Number(sc.siteIncreasePerCountry || 0)))}" />
+          </label>
+          <label>Additional Max Participants per Selected Country
+            <input type="number" step="1" min="0"
+              class="scenario-field"
+              data-scenario-id="${sc.id}"
+              data-field="maxParticipantIncreasePerCountry"
+              value="${Math.max(0, Math.floor(Number(sc.maxParticipantIncreasePerCountry || 0)))}" />
           </label>
         </div>
 
@@ -2577,43 +2603,120 @@ function buildScenarioSitesForScenario(scenario) {
   }
 
   const selectedCountries = scenario.selectedCountries || [];
+  const selectedCountrySet = new Set(selectedCountries);
+
+  const baseScreenFail = getNumberValue('screenFailRateKPI', 0);
+  const scenarioScreenFail = scenario.screenFailRate > 0
+    ? Number(scenario.screenFailRate)
+    : baseScreenFail;
 
   const scenarioSites = sites
-    .filter(site => site.include || selectedCountries.includes(site.country))
-    .map(site => {
-      const scenarioSite = { ...site };
+    .filter(site => site.include || selectedCountrySet.has(site.country))
+    .map(site => ({
+      ...site,
+      include: site.include || selectedCountrySet.has(site.country)
+    }));
 
-      if (selectedCountries.includes(site.country)) {
-        scenarioSite.include = true;
+  const siteIncreasePerCountry = Math.max(0, Math.floor(Number(scenario.siteIncreasePerCountry || 0)));
+
+  if (siteIncreasePerCountry > 0 && selectedCountries.length > 0) {
+    selectedCountries.forEach(country => {
+      const existingCountrySites = scenarioSites.filter(site => site.country === country);
+
+      if (existingCountrySites.length === 0) {
+        return;
       }
 
-      const baseScreenFail = getNumberValue('screenFailRateKPI', 0);
-      const scenarioScreenFail = scenario.screenFailRate > 0
-        ? Number(scenario.screenFailRate)
-        : baseScreenFail;
+      const countryInfo = countryAssumptions.find(c => c.country === country);
+      const activationSpacingDays = countryInfo
+        ? Math.max(1, Number(countryInfo.averageTimeToActivateSite || 1))
+        : 30;
 
-      const countryInfo = countryAssumptions.find(c => c.country === site.country);
+      const lastActivationDate = existingCountrySites
+        .map(site => parseDateInput(site.activation))
+        .filter(date => date)
+        .sort((a, b) => a.getTime() - b.getTime())
+        .pop();
 
-      if (countryInfo) {
-        const participants = Number(countryInfo.participantsPerCountry || 0);
-        const siteCount = Math.max(1, Number(countryInfo.siteCount || 1));
-        scenarioSite.max = Math.round(participants * (1 - scenarioScreenFail / 100) / siteCount);
+      for (let i = 0; i < siteIncreasePerCountry; i += 1) {
+        const templateSite = existingCountrySites[i % existingCountrySites.length];
+        const clone = {
+          ...templateSite,
+          include: true,
+          siteKey: `${toStringValue(templateSite.siteKey)}|scenario-${scenario.id}|extra-${country}-${i + 1}`,
+          site: `${country} Scenario Site ${existingCountrySites.length + i + 1}`
+        };
+
+        if (lastActivationDate) {
+          clone.activation = formatDateForInput(
+            addDays(lastActivationDate, activationSpacingDays * (i + 1))
+          );
+        }
+
+        scenarioSites.push(clone);
       }
-
-      if (scenario.enrollmentRate > 0) {
-        scenarioSite.er = Number(scenario.enrollmentRate);
-      }
-
-      const activationDate = parseDateInput(site.activation);
-      if (activationDate) {
-        const adjustment = Number(scenario.activationTimingAdjustment || 0);
-        scenarioSite.activation = formatDateForInput(
-          adjustment === 0 ? activationDate : addDays(activationDate, adjustment)
-        );
-      }
-
-      return scenarioSite;
     });
+  }
+
+  const maxParticipantIncreasePerCountry = Math.max(0, Math.floor(Number(scenario.maxParticipantIncreasePerCountry || 0)));
+  const additionalMaxBySiteKey = {};
+
+  if (maxParticipantIncreasePerCountry > 0 && selectedCountries.length > 0) {
+    selectedCountries.forEach(country => {
+      const includedCountrySites = scenarioSites.filter(site => site.include && site.country === country);
+
+      if (includedCountrySites.length === 0) {
+        return;
+      }
+
+      const baseIncrease = Math.floor(maxParticipantIncreasePerCountry / includedCountrySites.length);
+      const remainder = maxParticipantIncreasePerCountry % includedCountrySites.length;
+
+      includedCountrySites.forEach((site, index) => {
+        const siteKey = toStringValue(site.siteKey);
+        const increment = baseIncrease + (index < remainder ? 1 : 0);
+        additionalMaxBySiteKey[siteKey] = (additionalMaxBySiteKey[siteKey] || 0) + increment;
+      });
+    });
+  }
+
+  const effectiveSiteCountByCountry = {};
+
+  scenarioSites.forEach(site => {
+    if (!site.include) {
+      return;
+    }
+
+    effectiveSiteCountByCountry[site.country] = (effectiveSiteCountByCountry[site.country] || 0) + 1;
+  });
+
+  scenarioSites.forEach(scenarioSite => {
+    const countryInfo = countryAssumptions.find(c => c.country === scenarioSite.country);
+
+    if (countryInfo) {
+      const participants = Number(countryInfo.participantsPerCountry || 0);
+      const siteCount = Math.max(1, Number(effectiveSiteCountByCountry[scenarioSite.country] || countryInfo.siteCount || 1));
+      scenarioSite.max = Math.round(participants * (1 - scenarioScreenFail / 100) / siteCount);
+    }
+
+    const siteKey = toStringValue(scenarioSite.siteKey);
+    const maxIncrease = Number(additionalMaxBySiteKey[siteKey] || 0);
+    if (maxIncrease > 0) {
+      scenarioSite.max = Math.max(0, Number(scenarioSite.max || 0)) + maxIncrease;
+    }
+
+    if (scenario.enrollmentRate > 0) {
+      scenarioSite.er = Number(scenario.enrollmentRate);
+    }
+
+    const activationDate = parseDateInput(scenarioSite.activation);
+    if (activationDate) {
+      const adjustment = Number(scenario.activationTimingAdjustment || 0);
+      scenarioSite.activation = formatDateForInput(
+        adjustment === 0 ? activationDate : addDays(activationDate, adjustment)
+      );
+    }
+  });
 
   return scenarioSites;
 }
