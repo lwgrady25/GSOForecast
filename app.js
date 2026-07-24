@@ -1004,6 +1004,16 @@ function formatWholeNumber(value) {
   return Math.round(numericValue).toLocaleString('en-US');
 }
 
+function setRiskClassIfBelowTarget(id, value, target) {
+  const element = document.getElementById(id);
+  if (!element) {
+    return;
+  }
+
+  const isRisk = Number(target) > 0 && Number(value) < Number(target);
+  element.classList.toggle('status-risk', isRisk);
+}
+
 function updateParticipantSummaryCards() {
   const includedCountrySet = new Set(
     sites
@@ -1062,6 +1072,14 @@ function updateParticipantSummaryCards() {
   setTextIfExists('siteParticipantsAfterScreenFail', formatWholeNumber(siteAfterScreenFail));
   setTextIfExists('siteParticipantsBeforeScreenFailAll', formatWholeNumber(siteBeforeScreenFailAll));
   setTextIfExists('siteParticipantsAfterScreenFailAll', formatWholeNumber(siteAfterScreenFailAll));
+
+  const targetEnrollment = getNumberValue('targetEnrollmentKPI', 0);
+
+  setRiskClassIfBelowTarget('dashboardParticipantsAfterScreenFail', countryAfterScreenFail, targetEnrollment);
+  setRiskClassIfBelowTarget('countryParticipantsAfterScreenFail', countryAfterScreenFail, targetEnrollment);
+  setRiskClassIfBelowTarget('countryParticipantsAfterScreenFailAll', countryAfterScreenFailAll, targetEnrollment);
+  setRiskClassIfBelowTarget('siteParticipantsAfterScreenFail', siteAfterScreenFail, targetEnrollment);
+  setRiskClassIfBelowTarget('siteParticipantsAfterScreenFailAll', siteAfterScreenFailAll, targetEnrollment);
 }
 
 function getHistoricalApprovalDays(countryName) {
@@ -2753,6 +2771,23 @@ function renderSiteActivationCurveChart(
     })
     .join('');
 
+  const baselineValueLabels = baselineSeries
+    .map((row, index) => {
+      if (index % xLabelStep !== 0 && index !== allMonths.length - 1) {
+        return '';
+      }
+
+      return `
+        <text
+          x="${getX(index)}"
+          y="${getY(row.activeSites) - 8}"
+          class="site-activation-value-label">
+          ${row.activeSites}
+        </text>
+      `;
+    })
+    .join('');
+
   const scenarioLines = alignedScenarioSeries.map(item => {
     const points = buildPoints(item.curve);
     const dots = item.curve.map((row, index) => `
@@ -2808,6 +2843,7 @@ function renderSiteActivationCurveChart(
       </polyline>
 
       ${baselineDots}
+      ${baselineValueLabels}
       ${scenarioLines}
       ${xLabels}
 
