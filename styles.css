@@ -75,6 +75,7 @@ nav { display: grid; gap: 10px; }
   margin: 0;
 }
 .kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.country-participant-kpi-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
 .kpi-card, .panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: 0 4px 16px rgba(16,24,40,.04); }
 .kpi-card span { display: block; color: var(--muted); font-size: 13px; margin-bottom: 6px; }
 .kpi-card strong { font-size: 26px; }
